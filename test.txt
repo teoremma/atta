@@ -1,0 +1,1 @@
+The closest prime numbers to 100 are 97 and 101.
