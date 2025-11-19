@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "accelerate>=1.11.0",
+    "matplotlib>=3.10.7",
+    "scikit-learn>=1.7.2",
     "torch>=2.9.0",
     "transformers>=4.57.1",
 ]
