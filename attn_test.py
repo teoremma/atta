@@ -3,6 +3,13 @@ import torch
 import numpy as np
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+from scipy.cluster.hierarchy import dendrogram, linkage
+
+import datetime
+import os
+
+def timestamp():
+    return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 class AttentionTest:
     def __init__(self, model_id):
@@ -14,34 +21,6 @@ class AttentionTest:
         self.model.eval()
         self.model.set_attn_implementation("eager")
         self.device = next(self.model.parameters()).device
-
-    def generate(self, prompt):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        # print(inputs.shape)
-        outputs = self.model.generate(
-            **inputs,
-            return_dict_in_generate=True,
-            output_scores=True,
-            output_hidden_states=True,
-            output_attentions=True,
-            max_new_tokens=7,
-            do_sample=True,
-            num_return_sequences=10,
-        )
-
-        # assert isinstance(outputs, GenerateOutput) 
-
-        # Print the generated tokens and their corresponding attention scores
-        sequence = outputs.sequences[0]
-        # tokens = self.tokenizer.batch_decode(sequence)
-        scores = outputs.scores[0]
-        hiddent_states = outputs.hidden_states[0]
-        attentions = outputs.attentions[0]
-
-        for sequence in outputs.sequences:
-            tokens = self.tokenizer.batch_decode(sequence)
-            print(tokens)
-        pass
 
     def get_hidden_states(self, prompt: str, n_completions: int):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
@@ -56,6 +35,7 @@ class AttentionTest:
             stop_strings=["\n"],
             return_dict_in_generate=True,
             output_hidden_states=True,
+            # temperature=1.5,
         )
 
         outputs = self.model.generate(
@@ -67,11 +47,11 @@ class AttentionTest:
 
         sequences = outputs.sequences
         # sequences has shape (n_completions, sequence_length)
-        assert len(sequences.shape) == 2, f"Expected sequences to have shape (n_completions, sequence_length), but got {sequences.shape}"
-        assert sequences.shape[0] == n_completions, f"Expected {n_completions} completions, but got {sequences.shape[0]}"
+        assert len(sequences.shape) == 2
+        assert sequences.shape[0] == n_completions
         # sequences = sequences[:, len(inputs.input_ids[0]):]  # Remove the prompt tokens
         sequences = sequences[:, prompt_length:]  # Remove the prompt tokens
-        assert sequences.shape[1] <= max_new_tokens, f"Expected generated sequence length to be at most {max_new_tokens}, but got {sequences.shape[1]}"
+        assert sequences.shape[1] <= max_new_tokens
         max_generated_length = sequences.shape[1]
 
         hidden_states = outputs.hidden_states
@@ -114,14 +94,11 @@ class AttentionTest:
             "hidden_states": hidden_states_tensor,
         }
 
-    def plot_embeddings(self, embeddings: dict, idx: int):
+    def plot_embeddings(self, embeddings: dict, idx: int, plot_dir: str):
         # embeddings is a dictionary mapping from prefix (tuple of token ids) to hidden state vector (numpy array)
+        # make sure the plot directory exists
+        os.makedirs(f"{plot_dir}/tsne", exist_ok=True)
 
-        # for prefix, hidden_state_vector in embeddings.items():
-        #     print(f"Prefix: {self.tokenizer.batch_decode(prefix)}, Hidden state vector shape: {hidden_state_vector.shape}")
-
-        # use t-sne to reduce the dimensionality of the hidden state vectors to 2D and plot them
-        # make sure to label the points with the corresponding prefix
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
         tsne = TSNE(n_components=2, random_state=0, perplexity=10)
@@ -133,35 +110,27 @@ class AttentionTest:
         plt.title("t-SNE of Hidden State Vectors")
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
-        plt.savefig(f"plots/tsne/hidden_states_layer_{idx}.png")
+        # make sure the plot directory exists
+        os.makedirs(f"{plot_dir}/tsne", exist_ok=True)
+        plt.savefig(f"{plot_dir}/tsne/hidden_states_layer_{idx}.png")
         plt.close()
         
 
-    def cluster_embeddings(self, embeddings: dict, n_clusters: int, idx: int):
-        # use hierarchical clustering to cluster the hidden state vectors into n_clusters clusters
-        from sklearn.cluster import AgglomerativeClustering
+    def cluster_embeddings(self, embeddings: dict, n_clusters: int, idx: int, plot_dir: str):
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
-        # clustering = AgglomerativeClustering(n_clusters=n_clusters)
-        # cluster_labels = clustering.fit_predict(hidden_state_vectors)
-        # clusters = {}
-        # for i, label in enumerate(cluster_labels):
-        #     if label not in clusters:
-        #         clusters[label] = []
-        #     clusters[label].append(prefixes[i])
 
-        # now, plot a dendrogram of the clusters
-        from scipy.cluster.hierarchy import dendrogram, linkage
         linked = linkage(
             hidden_state_vectors, 
             # method='single', 
-            method='complete', 
+            # method='complete', 
+            # method='centroid', 
+            method='average', 
             optimal_ordering=True
         )
         labelList = ["".join(self.tokenizer.batch_decode(prefix)).replace("\n", "\\n") for prefix in prefixes]
         plt.figure(figsize=(20, 14))
         dendrogram(linked,
-            # orientation='top',
             orientation='left',
             labels=labelList,
             distance_sort=True,
@@ -172,18 +141,21 @@ class AttentionTest:
         plt.ylabel("Distance")
         # make sure there's enough space to show the labels
         plt.tight_layout()
-        plt.savefig(f"plots/dendrogram/hidden_states_dendrogram_{idx}.png")
+        os.makedirs(f"{plot_dir}/dendrogram", exist_ok=True)
+        plt.savefig(f"{plot_dir}/dendrogram/hidden_states_dendrogram_{idx}.png")
         plt.close()
     
-    def find_nearest_neighbors(self, embeddings: dict, n_neighbors: int, index: int):
+    def find_nearest_neighbors(self, embeddings: dict, n_neighbors: int, index: int, plot_dir: str):
         # for each hidden state vector, find the n_neighbors nearest neighbors in the embedding space and print their corresponding prefixes
         from sklearn.neighbors import NearestNeighbors
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
         nbrs = NearestNeighbors(n_neighbors=n_neighbors + 1, algorithm='ball_tree').fit(hidden_state_vectors)
         distances, indices = nbrs.kneighbors(hidden_state_vectors)
+        # make sure the plot directory exists
+        os.makedirs(f"{plot_dir}/nn", exist_ok=True)
         # save nearest neighbors to file
-        nn_file = f"plots/nn/nearest_neighbors_layer_{index}.txt"
+        nn_file = f"{plot_dir}/nn/nearest_neighbors_layer_{index}.txt"
         with open(nn_file, "w") as f:
             for i, prefix in enumerate(prefixes):
                 prefix_toks = self.tokenizer.batch_decode(prefix)
@@ -199,7 +171,12 @@ class AttentionTest:
                 f.write("\n\n")
         
 
-    def plot_hidden_states(self, prompt: str, n_completions: int):
+    def plot_hidden_states(self, text_file: str, n_completions: int):
+        with open(text_file, "r") as f:
+            prompt = f.read()
+        
+        prompt_name = text_file.split("/")[-1].split(".")[0]
+
         hidden_states_dict = self.get_hidden_states(prompt, n_completions)
         prompt_ids = hidden_states_dict["prompt_ids"]
         print(self.tokenizer.batch_decode(prompt_ids[0]))
@@ -213,6 +190,12 @@ class AttentionTest:
         max_generated_length = hidden_states_tensor.shape[1]
         num_layers = hidden_states_tensor.shape[2]
         hidden_size = hidden_states_tensor.shape[3]
+
+        # create a subdir in `plots` to save the plots for this test
+        tms = timestamp()
+        plot_dir = f"plots/{tms}_{prompt_name}"
+        os.makedirs(plot_dir, exist_ok=True)
+
         for layer_idx in range(num_layers):
             print("Processing layer", layer_idx)
             embeddings = {}
@@ -242,16 +225,21 @@ class AttentionTest:
                         assert np.allclose(existing_vector, hidden_state_vector.cpu().numpy()), f"Hidden state vector for prefix {prefix_key} is different from the existing vector in the dictionary"
             # print(f"Layer {layer_idx}: {len(embeddings)} unique prefixes")
 
-            self.plot_embeddings(embeddings, layer_idx)
-            self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx)
-            self.find_nearest_neighbors(embeddings, n_neighbors=5, index=layer_idx)
+            self.plot_embeddings(embeddings, layer_idx, plot_dir=plot_dir)
+            self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir)
+            self.find_nearest_neighbors(embeddings, n_neighbors=5, index=layer_idx, plot_dir=plot_dir)
         
 
 def test_attention():
     # text_file = "test.txt"
-    text_file = "prompts/dijkstra.txt"
-    with open(text_file, "r") as f:
-        text = f.read()
+    # text_file = "prompts/dijkstra.txt"
+    text_file = "prompts/dijkstra2.txt"
+    # text_file = "prompts/gcd.txt"
+    # text_file = "prompts/gcd2.txt"
+    # text_file = "prompts/hash.txt"
+
+    # with open(text_file, "r") as f:
+    #     text = f.read()
 
     # model_id = "Qwen/Qwen2.5-Coder-0.5B"
     # model_id = "Qwen/Qwen2.5-Coder-3B"
@@ -264,7 +252,7 @@ def test_attention():
     attention_test = AttentionTest(model_id)
     # attention_test.generate(text)
     # attention_test.get_hidden_states(text, n_completions=n_completions)
-    attention_test.plot_hidden_states(text, n_completions=n_completions)
+    attention_test.plot_hidden_states(text_file, n_completions=n_completions)
 
 if __name__ == "__main__":
     test_attention()

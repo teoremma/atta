@@ -1,0 +1,5 @@
+```python
+import hashlib
+
+def register(username, password):
+    hashed_password =

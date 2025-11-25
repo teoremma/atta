@@ -1,0 +1,5 @@
+```python
+"""
+An implementation of Dijkstra's algorithm
+"""
+def dijkstra(graph, start):
