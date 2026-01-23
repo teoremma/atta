@@ -1,0 +1,7 @@
+```python
+"""
+A short, one-file script in Python to scans a directory tree,
+hashes files to find exact duplicates, and generates a list
+of candidates for deletion
+"""
+import

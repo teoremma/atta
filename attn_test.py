@@ -1,3 +1,4 @@
+import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import torch
 import numpy as np
@@ -32,7 +33,8 @@ class AttentionTest:
             max_new_tokens=max_new_tokens,
             do_sample=True,
             num_return_sequences=n_completions,
-            stop_strings=["\n"],
+            # stop_strings=["\n"],
+            stop_strings=["```"],
             return_dict_in_generate=True,
             output_hidden_states=True,
             # temperature=1.5,
@@ -116,7 +118,7 @@ class AttentionTest:
         plt.close()
         
 
-    def cluster_embeddings(self, embeddings: dict, n_clusters: int, idx: int, plot_dir: str):
+    def cluster_embeddings(self, embeddings: dict, n_clusters: int, idx: int, plot_dir: str, metric: str = 'cosine'):
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
 
@@ -126,6 +128,7 @@ class AttentionTest:
             # method='complete', 
             # method='centroid', 
             method='average', 
+            metric=metric,
             optimal_ordering=True
         )
         labelList = ["".join(self.tokenizer.batch_decode(prefix)).replace("\n", "\\n") for prefix in prefixes]
@@ -142,20 +145,20 @@ class AttentionTest:
         # make sure there's enough space to show the labels
         plt.tight_layout()
         os.makedirs(f"{plot_dir}/dendrogram", exist_ok=True)
-        plt.savefig(f"{plot_dir}/dendrogram/hidden_states_dendrogram_{idx}.png")
+        plt.savefig(f"{plot_dir}/dendrogram/hidden_states_dendrogram_{idx}_{metric}.png")
         plt.close()
     
-    def find_nearest_neighbors(self, embeddings: dict, n_neighbors: int, index: int, plot_dir: str):
+    def find_nearest_neighbors(self, embeddings: dict, n_neighbors: int, index: int, plot_dir: str, metric: str = 'cosine'):
         # for each hidden state vector, find the n_neighbors nearest neighbors in the embedding space and print their corresponding prefixes
         from sklearn.neighbors import NearestNeighbors
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
-        nbrs = NearestNeighbors(n_neighbors=n_neighbors + 1, algorithm='ball_tree').fit(hidden_state_vectors)
+        nbrs = NearestNeighbors(n_neighbors=n_neighbors + 1, algorithm='auto', metric=metric).fit(hidden_state_vectors)
         distances, indices = nbrs.kneighbors(hidden_state_vectors)
         # make sure the plot directory exists
         os.makedirs(f"{plot_dir}/nn", exist_ok=True)
         # save nearest neighbors to file
-        nn_file = f"{plot_dir}/nn/nearest_neighbors_layer_{index}.txt"
+        nn_file = f"{plot_dir}/nn/nearest_neighbors_layer_{index}_{metric}.txt"
         with open(nn_file, "w") as f:
             for i, prefix in enumerate(prefixes):
                 prefix_toks = self.tokenizer.batch_decode(prefix)
@@ -171,7 +174,7 @@ class AttentionTest:
                 f.write("\n\n")
         
 
-    def plot_hidden_states(self, text_file: str, n_completions: int):
+    def plot_hidden_states(self, text_file: str, n_completions: int, metric: str = 'cosine'):
         with open(text_file, "r") as f:
             prompt = f.read()
         
@@ -226,24 +229,25 @@ class AttentionTest:
             # print(f"Layer {layer_idx}: {len(embeddings)} unique prefixes")
 
             self.plot_embeddings(embeddings, layer_idx, plot_dir=plot_dir)
-            self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir)
-            self.find_nearest_neighbors(embeddings, n_neighbors=5, index=layer_idx, plot_dir=plot_dir)
+            self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
+            self.find_nearest_neighbors(embeddings, n_neighbors=5, index=layer_idx, plot_dir=plot_dir, metric=metric)
         
 
-def test_attention():
+def test_attention(metric: str = 'cosine'):
     # text_file = "test.txt"
     # text_file = "prompts/dijkstra.txt"
-    text_file = "prompts/dijkstra2.txt"
+    # text_file = "prompts/dijkstra2.txt"
     # text_file = "prompts/gcd.txt"
     # text_file = "prompts/gcd2.txt"
     # text_file = "prompts/hash.txt"
+    text_file = "prompts/duplicate.txt"
 
     # with open(text_file, "r") as f:
     #     text = f.read()
 
     # model_id = "Qwen/Qwen2.5-Coder-0.5B"
-    # model_id = "Qwen/Qwen2.5-Coder-3B"
-    model_id = "Qwen/Qwen2.5-Coder-7B"
+    model_id = "Qwen/Qwen2.5-Coder-3B"
+    # model_id = "Qwen/Qwen2.5-Coder-7B"
 
     # n_completions = 14
     # n_completions = 35
@@ -252,7 +256,10 @@ def test_attention():
     attention_test = AttentionTest(model_id)
     # attention_test.generate(text)
     # attention_test.get_hidden_states(text, n_completions=n_completions)
-    attention_test.plot_hidden_states(text_file, n_completions=n_completions)
+    attention_test.plot_hidden_states(text_file, n_completions=n_completions, metric=metric)
 
 if __name__ == "__main__":
-    test_attention()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--metric", type=str, default="cosine", choices=["cosine", "euclidean"])
+    args = parser.parse_args()
+    test_attention(metric=args.metric)
