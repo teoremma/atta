@@ -23,6 +23,10 @@ class AttentionTest:
         self.model.set_attn_implementation("eager")
         self.device = next(self.model.parameters()).device
 
+    def get_last_n_tokens_str(self, prefix: tuple, n: int) -> str:
+        last_n_tokens = prefix[-n:]
+        return "".join(self.tokenizer.batch_decode(last_n_tokens)).replace("\n", "\\n")
+
     def get_hidden_states(self, prompt: str, n_completions: int):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         prompt_length = inputs.input_ids.shape[1]
@@ -103,18 +107,22 @@ class AttentionTest:
 
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
-        tsne = TSNE(n_components=2, random_state=0, perplexity=10)
+        # we need to check if there are enough samples for the perplexity
+        perplexity = min(10, len(prefixes) - 1)
+        tsne = TSNE(n_components=2, random_state=0, perplexity=perplexity)
         hidden_state_vectors_2d = tsne.fit_transform(hidden_state_vectors)
         plt.figure(figsize=(10, 10))
         for i, prefix in enumerate(prefixes):
             plt.scatter(hidden_state_vectors_2d[i, 0], hidden_state_vectors_2d[i, 1])
-            plt.annotate("".join(self.tokenizer.batch_decode(prefix)).replace("\n", "\\n"), (hidden_state_vectors_2d[i, 0], hidden_state_vectors_2d[i, 1]))
+            # only show the last 5 tokens
+            label = self.get_last_n_tokens_str(prefix, 5)
+            plt.annotate(label, (hidden_state_vectors_2d[i, 0], hidden_state_vectors_2d[i, 1]))
         plt.title("t-SNE of Hidden State Vectors")
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
         # make sure the plot directory exists
         os.makedirs(f"{plot_dir}/tsne", exist_ok=True)
-        plt.savefig(f"{plot_dir}/tsne/hidden_states_layer_{idx}.png")
+        plt.savefig(f"{plot_dir}/tsne/hidden_states_layer_{idx}.png", dpi=200)
         plt.close()
         
 
@@ -131,7 +139,7 @@ class AttentionTest:
             metric=metric,
             optimal_ordering=True
         )
-        labelList = ["".join(self.tokenizer.batch_decode(prefix)).replace("\n", "\\n") for prefix in prefixes]
+        labelList = [self.get_last_n_tokens_str(prefix, 5) for prefix in prefixes]
         plt.figure(figsize=(20, 14))
         dendrogram(linked,
             orientation='left',
@@ -145,7 +153,7 @@ class AttentionTest:
         # make sure there's enough space to show the labels
         plt.tight_layout()
         os.makedirs(f"{plot_dir}/dendrogram", exist_ok=True)
-        plt.savefig(f"{plot_dir}/dendrogram/hidden_states_dendrogram_{idx}_{metric}.png")
+        plt.savefig(f"{plot_dir}/dendrogram/hidden_states_dendrogram_{idx}_{metric}.png", dpi=200)
         plt.close()
     
     def find_nearest_neighbors(self, embeddings: dict, n_neighbors: int, index: int, plot_dir: str, metric: str = 'cosine'):
@@ -162,14 +170,14 @@ class AttentionTest:
         with open(nn_file, "w") as f:
             for i, prefix in enumerate(prefixes):
                 prefix_toks = self.tokenizer.batch_decode(prefix)
-                prefix_str = "".join(prefix_toks).replace("\n", "\\n")
+                prefix_str = self.get_last_n_tokens_str(prefix, 5)
                 f.write(f"Prefix: {prefix_str}    <{prefix_toks}>\n")
                 f.write(f"Nearest neighbors:\n")
                 for j in range(1, n_neighbors + 1):
                     neighbor_idx = indices[i, j]
                     neighbor_prefix = prefixes[neighbor_idx]
                     neighbor_toks = self.tokenizer.batch_decode(neighbor_prefix)
-                    neighbor_str = "".join(neighbor_toks).replace("\n", "\\n")
+                    neighbor_str = self.get_last_n_tokens_str(neighbor_prefix, 5)
                     f.write(f"  {neighbor_str}    <{neighbor_toks}>    d:{distances[i, j]}\n")
                 f.write("\n\n")
         
