@@ -209,6 +209,7 @@ class AttentionTest:
         completion_ids: torch.Tensor,
         idx: int,
         plot_dir: str,
+        only_newline_tokens: bool = False,
     ):
         os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
         n_completions, max_generated_length, _, hidden_size = hidden_states_tensor.shape
@@ -224,6 +225,10 @@ class AttentionTest:
                 token_id = completion_ids[completion_idx, step_idx].item()
                 if eos_token_id is not None and token_id == eos_token_id:
                     break
+                if only_newline_tokens:
+                    token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
+                    if "\n" not in token_text:
+                        continue
                 vector = hidden_states_tensor[completion_idx, step_idx, idx, :].cpu().numpy()
                 step_indices.append(len(points))
                 token_steps.append(step_idx)
@@ -325,6 +330,12 @@ class AttentionTest:
                     )
                     for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
                         step_idx = completion_token_steps[completion_idx][local_idx]
+                        token_text = self.tokenizer.decode(
+                            [completion_ids[completion_idx, step_idx].item()],
+                            skip_special_tokens=False,
+                        )
+                        if "\n" not in token_text:
+                            continue
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
@@ -372,6 +383,7 @@ class AttentionTest:
         completion_ids: torch.Tensor,
         idx: int,
         plot_dir: str,
+        only_newline_tokens: bool = False,
     ):
         try:
             import umap
@@ -393,6 +405,10 @@ class AttentionTest:
                 token_id = completion_ids[completion_idx, step_idx].item()
                 if eos_token_id is not None and token_id == eos_token_id:
                     break
+                if only_newline_tokens:
+                    token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
+                    if "\n" not in token_text:
+                        continue
                 vector = hidden_states_tensor[completion_idx, step_idx, idx, :].cpu().numpy()
                 step_indices.append(len(points))
                 token_steps.append(step_idx)
@@ -493,6 +509,12 @@ class AttentionTest:
                     )
                     for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
                         step_idx = completion_token_steps[completion_idx][local_idx]
+                        token_text = self.tokenizer.decode(
+                            [completion_ids[completion_idx, step_idx].item()],
+                            skip_special_tokens=False,
+                        )
+                        if "\n" not in token_text:
+                            continue
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
@@ -674,7 +696,14 @@ class AttentionTest:
                 f.write("\n")
         
 
-    def plot_hidden_states(self, text_file: str, n_completions: int, metric: str = 'cosine', max_new_tokens: int = 32):
+    def plot_hidden_states(
+        self,
+        text_file: str,
+        n_completions: int,
+        metric: str = 'cosine',
+        max_new_tokens: int = 32,
+        only_newline_tokens: bool = False,
+    ):
         with open(text_file, "r") as f:
             prompt = f.read()
         
@@ -750,8 +779,20 @@ class AttentionTest:
             # print(f"Layer {layer_idx}: {len(embeddings)} unique prefixes")
 
             self.plot_embeddings(embeddings, layer_idx, plot_dir=plot_dir)
-            self.plot_sequence_tsne(hidden_states_tensor, completion_ids, layer_idx, plot_dir=plot_dir)
-            self.plot_sequence_umap(hidden_states_tensor, completion_ids, layer_idx, plot_dir=plot_dir)
+            self.plot_sequence_tsne(
+                hidden_states_tensor,
+                completion_ids,
+                layer_idx,
+                plot_dir=plot_dir,
+                only_newline_tokens=only_newline_tokens,
+            )
+            self.plot_sequence_umap(
+                hidden_states_tensor,
+                completion_ids,
+                layer_idx,
+                plot_dir=plot_dir,
+                only_newline_tokens=only_newline_tokens,
+            )
             self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
             self.find_nearest_neighbors(
                 embeddings,
@@ -764,7 +805,14 @@ class AttentionTest:
             )
         
 
-def test_attention(model_id: str = None, text_file: str = None, n_completions: int = 10, metric: str = "cosine", max_new_tokens: int = 32):
+def test_attention(
+    model_id: str = None,
+    text_file: str = None,
+    n_completions: int = 10,
+    metric: str = "cosine",
+    max_new_tokens: int = 32,
+    only_newline_tokens: bool = False,
+):
     # # text_file = "test.txt"
     # # text_file = "prompts/dijkstra.txt"
     # # text_file = "prompts/dijkstra2.txt"
@@ -787,7 +835,13 @@ def test_attention(model_id: str = None, text_file: str = None, n_completions: i
     attention_test = AttentionTest(model_id)
     # attention_test.generate(text)
     # attention_test.get_hidden_states(text, n_completions=n_completions)
-    attention_test.plot_hidden_states(text_file, n_completions=n_completions, metric=metric, max_new_tokens=max_new_tokens)
+    attention_test.plot_hidden_states(
+        text_file,
+        n_completions=n_completions,
+        metric=metric,
+        max_new_tokens=max_new_tokens,
+        only_newline_tokens=only_newline_tokens,
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -796,5 +850,13 @@ if __name__ == "__main__":
     parser.add_argument("--n_completions", type=int, default=10)
     parser.add_argument("--metric", type=str, default="cosine", choices=["cosine", "euclidean"])
     parser.add_argument("--max_new_tokens", type=int, default=32)
+    parser.add_argument("--only_newline_tokens", action="store_true")
     args = parser.parse_args()
-    test_attention(model_id=args.model_id, text_file=args.text_file, n_completions=args.n_completions, metric=args.metric, max_new_tokens=args.max_new_tokens)
+    test_attention(
+        model_id=args.model_id,
+        text_file=args.text_file,
+        n_completions=args.n_completions,
+        metric=args.metric,
+        max_new_tokens=args.max_new_tokens,
+        only_newline_tokens=args.only_newline_tokens,
+    )
