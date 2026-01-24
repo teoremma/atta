@@ -255,10 +255,13 @@ class AttentionTest:
         points_2d = tsne.fit_transform(points_array)
 
         plt.figure(figsize=(12, 10))
-        cmap = plt.get_cmap("tab20", max(n_completions, 1))
+        cmap = plt.get_cmap("turbo")
+        color_vals = np.linspace(0, 1, max(n_completions, 2))
+        colors = [cmap(v) for v in color_vals]
         for completion_idx, step_indices in enumerate(completion_steps):
             if not step_indices:
                 continue
+            color = colors[completion_idx % len(colors)]
             coords = points_2d[step_indices]
             edge_flags = completion_edge_flags[completion_idx]
             edge_plot_indices = [
@@ -277,7 +280,7 @@ class AttentionTest:
                     non_edge_coords[:, 1],
                     s=12,
                     facecolors="none",
-                    edgecolors=cmap(completion_idx),
+                    edgecolors=color,
                     label=f"c{completion_idx}",
                 )
             if len(edge_coords):
@@ -285,7 +288,7 @@ class AttentionTest:
                     edge_coords[:, 0],
                     edge_coords[:, 1],
                     s=28,
-                    color=cmap(completion_idx),
+                    color=color,
                     label=None,
                 )
             for i in range(1, len(coords)):
@@ -298,7 +301,7 @@ class AttentionTest:
                     arrowprops={
                         "arrowstyle": "->",
                         "linewidth": 0.8,
-                        "color": cmap(completion_idx),
+                        "color": color,
                         "linestyle": (0, (1, 3)),
                     },
                 )
@@ -336,7 +339,7 @@ class AttentionTest:
                         arrowprops={
                             "arrowstyle": "->",
                             "linewidth": 1.6,
-                            "color": cmap(completion_idx),
+                            "color": color,
                             "linestyle": "-",
                         },
                     )
@@ -352,7 +355,7 @@ class AttentionTest:
                         arrowprops={
                             "arrowstyle": "->",
                             "linewidth": 1.6,
-                            "color": cmap(completion_idx),
+                            "color": color,
                             "linestyle": "-",
                         },
                     )
@@ -364,7 +367,7 @@ class AttentionTest:
                         arrowprops={
                             "arrowstyle": "->",
                             "linewidth": 1.6,
-                            "color": cmap(completion_idx),
+                            "color": color,
                             "linestyle": "-",
                         },
                     )
@@ -384,6 +387,7 @@ class AttentionTest:
             for completion_idx, step_indices in enumerate(completion_steps):
                 if not step_indices:
                     continue
+                color = colors[completion_idx % len(colors)]
                 coords = points_2d[step_indices]
                 is_focus = completion_idx == focus_idx
                 alpha = 1.0 if is_focus else 0.15
@@ -406,7 +410,7 @@ class AttentionTest:
                         non_edge_coords[:, 1],
                         s=point_size,
                         facecolors="none",
-                        edgecolors=cmap(completion_idx),
+                        edgecolors=color,
                         alpha=alpha,
                         label=f"c{completion_idx}",
                     )
@@ -415,7 +419,7 @@ class AttentionTest:
                         edge_coords[:, 0],
                         edge_coords[:, 1],
                         s=point_size + 10,
-                        color=cmap(completion_idx),
+                        color=color,
                         alpha=alpha,
                         label=None,
                     )
@@ -429,7 +433,7 @@ class AttentionTest:
                         arrowprops={
                         "arrowstyle": "->",
                             "linewidth": 0.8,
-                            "color": cmap(completion_idx),
+                            "color": color,
                             "alpha": alpha,
                             "linestyle": (0, (1, 3)),
                         },
@@ -522,7 +526,7 @@ class AttentionTest:
                             arrowprops={
                                 "arrowstyle": "->",
                                 "linewidth": line_width + 0.9,
-                                "color": cmap(completion_idx),
+                                "color": color,
                                 "alpha": alpha,
                                 "linestyle": "-",
                             },
@@ -539,7 +543,7 @@ class AttentionTest:
                             arrowprops={
                                 "arrowstyle": "->",
                                 "linewidth": line_width + 0.9,
-                                "color": cmap(completion_idx),
+                                "color": color,
                                 "alpha": alpha,
                                 "linestyle": "-",
                             },
@@ -552,7 +556,7 @@ class AttentionTest:
                             arrowprops={
                                 "arrowstyle": "->",
                                 "linewidth": line_width + 0.9,
-                                "color": cmap(completion_idx),
+                                "color": color,
                                 "alpha": alpha,
                                 "linestyle": "-",
                             },
@@ -616,12 +620,15 @@ class AttentionTest:
         points_2d = reducer.fit_transform(points_array)
 
         plt.figure(figsize=(12, 10))
-        cmap = plt.get_cmap("tab20", max(n_completions, 1))
+        cmap = plt.get_cmap("turbo")
+        color_vals = np.linspace(0, 1, max(n_completions, 2))
+        colors = [cmap(v) for v in color_vals]
         for completion_idx, step_indices in enumerate(completion_steps):
             if not step_indices:
                 continue
+            color = colors[completion_idx % len(colors)]
             coords = points_2d[step_indices]
-            plt.scatter(coords[:, 0], coords[:, 1], s=12, color=cmap(completion_idx), label=f"c{completion_idx}")
+            plt.scatter(coords[:, 0], coords[:, 1], s=12, color=color, label=f"c{completion_idx}")
             plt.annotate(
                 str(completion_idx),
                 xy=(coords[0, 0], coords[0, 1]),
@@ -648,7 +655,7 @@ class AttentionTest:
                     "",
                     xy=(end[0], end[1]),
                     xytext=(start[0], start[1]),
-                    arrowprops={"arrowstyle": "->", "linewidth": 0.6, "color": cmap(completion_idx)},
+                    arrowprops={"arrowstyle": "->", "linewidth": 0.6, "color": color},
                 )
 
         plt.title("UMAP of Hidden State Vectors by Completion")
@@ -666,6 +673,7 @@ class AttentionTest:
             for completion_idx, step_indices in enumerate(completion_steps):
                 if not step_indices:
                     continue
+                color = colors[completion_idx % len(colors)]
                 coords = points_2d[step_indices]
                 is_focus = completion_idx == focus_idx
                 alpha = 1.0 if is_focus else 0.15
@@ -675,7 +683,7 @@ class AttentionTest:
                     coords[:, 0],
                     coords[:, 1],
                     s=point_size,
-                    color=cmap(completion_idx),
+                    color=color,
                     alpha=alpha,
                     label=f"c{completion_idx}",
                 )
@@ -762,7 +770,7 @@ class AttentionTest:
                         arrowprops={
                             "arrowstyle": "->",
                             "linewidth": line_width,
-                            "color": cmap(completion_idx),
+                            "color": color,
                             "alpha": alpha,
                         },
                     )
