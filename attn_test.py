@@ -376,6 +376,14 @@ class AttentionTest:
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        x_min, x_max = points_2d[:, 0].min(), points_2d[:, 0].max()
+        y_min, y_max = points_2d[:, 1].min(), points_2d[:, 1].max()
+        x_pad = (x_max - x_min) * 0.05
+        y_pad = (y_max - y_min) * 0.05
+        xlim = (x_min - x_pad, x_max + x_pad)
+        ylim = (y_min - y_pad, y_max + y_pad)
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}.png", dpi=200)
         plt.close()
@@ -386,6 +394,142 @@ class AttentionTest:
             plot_dir=plot_dir,
             idx=idx,
         )
+
+        # Edge-only plot
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            if not edge_plot_indices:
+                continue
+            edge_coords = coords[edge_plot_indices]
+            plt.scatter(
+                edge_coords[:, 0],
+                edge_coords[:, 1],
+                s=28,
+                color=color,
+                label=f"c{completion_idx}",
+            )
+            for i in range(len(edge_coords) - 1):
+                start = edge_coords[i]
+                end = edge_coords[i + 1]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 1.6,
+                        "color": color,
+                        "linestyle": "-",
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("t-SNE Edge-Only by Completion")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_edge_only.png", dpi=200)
+        plt.close()
+
+        # Non-edge-only plot
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("t-SNE Without Edge Components")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_no_edges.png", dpi=200)
+        plt.close()
 
         focus_dir = f"{plot_dir}/tsne_sequences_focus"
         os.makedirs(focus_dir, exist_ok=True)
