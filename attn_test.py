@@ -482,8 +482,6 @@ class AttentionTest:
                             [completion_ids[completion_idx, step_idx].item()],
                             skip_special_tokens=False,
                         )
-                        if "\n" not in token_text:
-                            continue
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )

@@ -1,0 +1,3 @@
+Write a Python function that calculates the number of distinct binary trees with n nodes.
+```python
+def num_trees(n):
