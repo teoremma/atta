@@ -260,7 +260,34 @@ class AttentionTest:
             if not step_indices:
                 continue
             coords = points_2d[step_indices]
-            plt.scatter(coords[:, 0], coords[:, 1], s=12, color=cmap(completion_idx), label=f"c{completion_idx}")
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=cmap(completion_idx),
+                    label=f"c{completion_idx}",
+                )
+            if len(edge_coords):
+                plt.scatter(
+                    edge_coords[:, 0],
+                    edge_coords[:, 1],
+                    s=28,
+                    color=cmap(completion_idx),
+                    label=None,
+                )
             for i in range(1, len(coords)):
                 start = coords[i - 1]
                 end = coords[i]
@@ -272,7 +299,7 @@ class AttentionTest:
                         "arrowstyle": "->",
                         "linewidth": 0.8,
                         "color": cmap(completion_idx),
-                        "linestyle": ":",
+                        "linestyle": (0, (1, 3)),
                     },
                 )
             plt.annotate(
@@ -294,7 +321,53 @@ class AttentionTest:
                 fontweight="bold",
                 bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
             )
-            # edge-only arrows removed for now
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(edge_plot_indices) > 1:
+                edge_coords = coords[edge_plot_indices]
+                for i in range(len(edge_coords) - 1):
+                    start = edge_coords[i]
+                    end = edge_coords[i + 1]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": cmap(completion_idx),
+                            "linestyle": "-",
+                        },
+                    )
+            edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+            if edge_only and len(coords) > 1:
+                first_edge = edge_only[0]
+                last_edge = edge_only[-1]
+                if first_edge != 0:
+                    plt.annotate(
+                        "",
+                        xy=(coords[first_edge][0], coords[first_edge][1]),
+                        xytext=(coords[0][0], coords[0][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": cmap(completion_idx),
+                            "linestyle": "-",
+                        },
+                    )
+                if last_edge != len(coords) - 1:
+                    plt.annotate(
+                        "",
+                        xy=(coords[len(coords) - 1][0], coords[len(coords) - 1][1]),
+                        xytext=(coords[last_edge][0], coords[last_edge][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": cmap(completion_idx),
+                            "linestyle": "-",
+                        },
+                    )
 
         plt.title("t-SNE of Hidden State Vectors by Completion")
         plt.xlabel("Dimension 1")
@@ -316,14 +389,36 @@ class AttentionTest:
                 alpha = 1.0 if is_focus else 0.15
                 line_width = 0.8 if is_focus else 0.4
                 point_size = 14 if is_focus else 10
-                plt.scatter(
-                    coords[:, 0],
-                    coords[:, 1],
-                    s=point_size,
-                    color=cmap(completion_idx),
-                    alpha=alpha,
-                    label=f"c{completion_idx}",
-                )
+                edge_flags = completion_edge_flags[completion_idx]
+                edge_plot_indices = [
+                    i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+                ]
+                if len(coords):
+                    edge_plot_indices.extend([0, len(coords) - 1])
+                edge_plot_indices = sorted(set(edge_plot_indices))
+                edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+                non_edge_coords = coords[
+                    [i for i in range(len(coords)) if i not in edge_plot_indices]
+                ]
+                if len(non_edge_coords):
+                    plt.scatter(
+                        non_edge_coords[:, 0],
+                        non_edge_coords[:, 1],
+                        s=point_size,
+                        facecolors="none",
+                        edgecolors=cmap(completion_idx),
+                        alpha=alpha,
+                        label=f"c{completion_idx}",
+                    )
+                if len(edge_coords):
+                    plt.scatter(
+                        edge_coords[:, 0],
+                        edge_coords[:, 1],
+                        s=point_size + 10,
+                        color=cmap(completion_idx),
+                        alpha=alpha,
+                        label=None,
+                    )
                 for i in range(1, len(coords)):
                     start = coords[i - 1]
                     end = coords[i]
@@ -336,7 +431,7 @@ class AttentionTest:
                             "linewidth": 0.8,
                             "color": cmap(completion_idx),
                             "alpha": alpha,
-                            "linestyle": ":",
+                            "linestyle": (0, (1, 3)),
                         },
                     )
                 if is_focus:
@@ -412,7 +507,56 @@ class AttentionTest:
                             ha="left",
                             va="bottom",
                         )
-                # edge-only arrows removed for now
+                edge_plot_indices = [
+                    i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+                ]
+                if len(edge_plot_indices) > 1:
+                    edge_coords = coords[edge_plot_indices]
+                    for i in range(len(edge_coords) - 1):
+                        start = edge_coords[i]
+                        end = edge_coords[i + 1]
+                        plt.annotate(
+                            "",
+                            xy=(end[0], end[1]),
+                            xytext=(start[0], start[1]),
+                            arrowprops={
+                                "arrowstyle": "->",
+                                "linewidth": line_width + 0.9,
+                                "color": cmap(completion_idx),
+                                "alpha": alpha,
+                                "linestyle": "-",
+                            },
+                        )
+                edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+                if edge_only and len(coords) > 1:
+                    first_edge = edge_only[0]
+                    last_edge = edge_only[-1]
+                    if first_edge != 0:
+                        plt.annotate(
+                            "",
+                            xy=(coords[first_edge][0], coords[first_edge][1]),
+                            xytext=(coords[0][0], coords[0][1]),
+                            arrowprops={
+                                "arrowstyle": "->",
+                                "linewidth": line_width + 0.9,
+                                "color": cmap(completion_idx),
+                                "alpha": alpha,
+                                "linestyle": "-",
+                            },
+                        )
+                    if last_edge != len(coords) - 1:
+                        plt.annotate(
+                            "",
+                            xy=(coords[len(coords) - 1][0], coords[len(coords) - 1][1]),
+                            xytext=(coords[last_edge][0], coords[last_edge][1]),
+                            arrowprops={
+                                "arrowstyle": "->",
+                                "linewidth": line_width + 0.9,
+                                "color": cmap(completion_idx),
+                                "alpha": alpha,
+                                "linestyle": "-",
+                            },
+                        )
 
             plt.title(f"t-SNE by Completion (focus c{focus_idx})")
             plt.xlabel("Dimension 1")
