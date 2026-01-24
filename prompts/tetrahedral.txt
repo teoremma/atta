@@ -1,0 +1,3 @@
+Write a function to find the nth tetrahedral number.
+```python
+def tetrahedral_number(n):

@@ -1,5 +1,6 @@
 import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
+from transformers.generation.logits_process import LogitsProcessor, LogitsProcessorList
 import torch
 import numpy as np
 from sklearn.manifold import TSNE
@@ -8,6 +9,19 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 
 import datetime
 import os
+
+LOGIT_BIAS_VALUE = -1e6
+LOGIT_BIAS_TOKEN_IDS = (
+    2,
+    671,
+    3190,
+    4210,
+    7129,
+    11166,
+    11456,
+    12599,
+)
+LOGIT_BIAS = {token_id: LOGIT_BIAS_VALUE for token_id in LOGIT_BIAS_TOKEN_IDS}
 
 def timestamp():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -27,9 +41,22 @@ class AttentionTest:
         last_n_tokens = prefix[-n:]
         return "".join(self.tokenizer.batch_decode(last_n_tokens)).replace("\n", "\\n")
 
+    class TokenBiasLogitsProcessor(LogitsProcessor):
+        def __init__(self, token_bias: dict[int, float]):
+            self.token_bias = token_bias
+
+        def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+            for token_id, bias in self.token_bias.items():
+                scores[:, token_id] += bias
+            return scores
+
     def get_hidden_states(self, prompt: str, n_completions: int, max_new_tokens: int = 32) -> dict:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         prompt_length = inputs.input_ids.shape[1]
+
+        logits_processor = LogitsProcessorList([
+            self.TokenBiasLogitsProcessor(LOGIT_BIAS),
+        ])
 
         generation_config = GenerationConfig(
             max_new_tokens=max_new_tokens,
@@ -46,6 +73,7 @@ class AttentionTest:
             **inputs,
             generation_config=generation_config,
             tokenizer=self.tokenizer,
+            logits_processor=logits_processor,
         )
 
 
