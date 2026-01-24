@@ -102,6 +102,11 @@ class AttentionTest:
         except Exception:
             return len(text) * fontsize * 0.6
 
+    def monospace_width_points(self, text: str, fontsize: int) -> float:
+        if not text:
+            return 0.0
+        return len(text) * fontsize * 0.6
+
     def get_hidden_states(self, prompt: str, n_completions: int, max_new_tokens: int = 32) -> dict:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         prompt_length = inputs.input_ids.shape[1]
@@ -339,16 +344,35 @@ class AttentionTest:
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
-                        label = self.format_prefix_with_marker(prefix_ids)
+                        prefix_text, token_text = self.format_prefix_line_and_token(prefix_ids)
+                        fontsize = 6
+                        fontfamily = "monospace"
+                        prefix_width = self.monospace_width_points(prefix_text, fontsize)
+                        token_width = self.monospace_width_points(token_text, fontsize)
+                        total_width = prefix_width + token_width
+                        prefix_offset = (-total_width / 2, 6)
+                        token_offset = (-total_width / 2 + prefix_width, 6)
+                        if prefix_text:
+                            plt.annotate(
+                                prefix_text,
+                                xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
+                                xytext=prefix_offset,
+                                textcoords="offset points",
+                                fontsize=fontsize,
+                                fontfamily=fontfamily,
+                                color="black",
+                                ha="left",
+                                va="bottom",
+                            )
                         plt.annotate(
-                            label,
+                            token_text,
                             xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
-                            xytext=(0, 6),
+                            xytext=token_offset,
                             textcoords="offset points",
-                            fontsize=6,
-                            fontfamily="monospace",
-                            color="black",
-                            ha="center",
+                            fontsize=fontsize,
+                            fontfamily=fontfamily,
+                            color="tab:red",
+                            ha="left",
                             va="bottom",
                         )
                 for i in range(len(step_indices) - 1):
@@ -518,16 +542,35 @@ class AttentionTest:
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
-                        label = self.format_prefix_with_marker(prefix_ids)
+                        prefix_text, token_text = self.format_prefix_line_and_token(prefix_ids)
+                        fontsize = 6
+                        fontfamily = "monospace"
+                        prefix_width = self.monospace_width_points(prefix_text, fontsize)
+                        token_width = self.monospace_width_points(token_text, fontsize)
+                        total_width = prefix_width + token_width
+                        prefix_offset = (-total_width / 2, 6)
+                        token_offset = (-total_width / 2 + prefix_width, 6)
+                        if prefix_text:
+                            plt.annotate(
+                                prefix_text,
+                                xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
+                                xytext=prefix_offset,
+                                textcoords="offset points",
+                                fontsize=fontsize,
+                                fontfamily=fontfamily,
+                                color="black",
+                                ha="left",
+                                va="bottom",
+                            )
                         plt.annotate(
-                            label,
+                            token_text,
                             xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
-                            xytext=(0, 6),
+                            xytext=token_offset,
                             textcoords="offset points",
-                            fontsize=6,
-                            fontfamily="monospace",
-                            color="black",
-                            ha="center",
+                            fontsize=fontsize,
+                            fontfamily=fontfamily,
+                            color="tab:red",
+                            ha="left",
                             va="bottom",
                         )
                 for i in range(len(step_indices) - 1):
