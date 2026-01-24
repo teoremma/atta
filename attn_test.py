@@ -224,7 +224,7 @@ class AttentionTest:
             for i, prefix in enumerate(prefixes):
                 prefix_marker = self.format_prefix_with_marker(prefix)
                 completion_idx, step_idx = prefix_meta.get(prefix, (-1, -1))
-                f.write(f"Prefix: `{prefix_marker}` ({completion_idx}, {step_idx})\n")
+                f.write(f"Prefix: ({completion_idx}, {step_idx}) `{prefix_marker}`\n")
                 f.write("Nearest neighbors:\n")
                 added = 0
                 for j in range(1, max_neighbors):
@@ -235,7 +235,7 @@ class AttentionTest:
                         continue
                     neighbor_marker = self.format_prefix_with_marker(neighbor_prefix)
                     f.write(
-                        f"  d:{distances[i, j]:.4f} `{neighbor_marker}` ({n_completion_idx}, {n_step_idx})\n"
+                        f"  d:{distances[i, j]:.4f} ({n_completion_idx}, {n_step_idx}) `{neighbor_marker}`\n"
                     )
                     added += 1
                     if added >= n_neighbors:
