@@ -580,6 +580,162 @@ class AttentionTest:
             )
             plt.close()
 
+    def plot_sequence_pca(
+        self,
+        points_2d: np.ndarray,
+        completion_steps: list[list[int]],
+        completion_edge_flags: list[list[bool]],
+        plot_dir: str,
+        idx: int,
+    ):
+        os.makedirs(f"{plot_dir}/pca_sequences", exist_ok=True)
+        cmap = plt.get_cmap("turbo")
+        color_vals = np.linspace(0, 1, max(len(completion_steps), 2))
+        colors = [cmap(v) for v in color_vals]
+
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            if len(edge_coords):
+                plt.scatter(
+                    edge_coords[:, 0],
+                    edge_coords[:, 1],
+                    s=28,
+                    color=color,
+                    label=None,
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                "L",
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(edge_plot_indices) > 1:
+                edge_coords = coords[edge_plot_indices]
+                for i in range(len(edge_coords) - 1):
+                    start = edge_coords[i]
+                    end = edge_coords[i + 1]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+            edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+            if edge_only and len(coords) > 1:
+                first_edge = edge_only[0]
+                last_edge = edge_only[-1]
+                if first_edge != 0:
+                    plt.annotate(
+                        "",
+                        xy=(coords[first_edge][0], coords[first_edge][1]),
+                        xytext=(coords[0][0], coords[0][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+                if last_edge != len(coords) - 1:
+                    plt.annotate(
+                        "",
+                        xy=(coords[len(coords) - 1][0], coords[len(coords) - 1][1]),
+                        xytext=(coords[last_edge][0], coords[last_edge][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+
+        plt.title("PCA (2D) of Hidden State Vectors by Completion")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}.png", dpi=200)
+        plt.close()
+
+    def plot_pca_reconstruction_error(self, vectors: np.ndarray, plot_dir: str, idx: int):
+        from sklearn.decomposition import PCA
+        max_components = min(vectors.shape[0], vectors.shape[1])
+        if max_components < 2:
+            return
+        pca = PCA(n_components=max_components, svd_solver="full")
+        pca.fit(vectors)
+        explained = pca.explained_variance_
+        residual = explained.sum() - np.cumsum(explained)
+        mse = residual / vectors.shape[1]
+        os.makedirs(f"{plot_dir}/pca", exist_ok=True)
+        plt.figure(figsize=(10, 6))
+        plt.plot(range(1, max_components + 1), mse, marker="o", markersize=3)
+        plt.title("PCA Reconstruction Error vs. Components")
+        plt.xlabel("Number of Components")
+        plt.ylabel("Reconstruction MSE")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/pca/reconstruction_error_layer_{idx}.png", dpi=200)
+        plt.close()
+
     def plot_sequence_tsne_gradient(
         self,
         points_2d: np.ndarray,
@@ -1045,6 +1201,39 @@ class AttentionTest:
         target_layer_idx = 14
         if target_layer_idx >= num_layers:
             raise ValueError(f"Requested layer {target_layer_idx}, but model has {num_layers} layers.")
+
+        # PCA analysis using all tokens at target layer
+        all_vectors = []
+        completion_steps = []
+        completion_edge_flags = []
+        for completion_idx in range(n_completions):
+            step_indices = []
+            edge_flags = []
+            for step_idx in range(max_generated_length):
+                token_id = completion_ids[completion_idx, step_idx].item()
+                if self.tokenizer.eos_token_id is not None and token_id == self.tokenizer.eos_token_id:
+                    break
+                vector = hidden_states_tensor[completion_idx, step_idx, target_layer_idx, :].cpu().numpy()
+                step_indices.append(len(all_vectors))
+                token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
+                edge_flags.append("\n" in token_text)
+                all_vectors.append(vector)
+            completion_steps.append(step_indices)
+            completion_edge_flags.append(edge_flags)
+
+        if all_vectors:
+            vectors = np.array(all_vectors)
+            self.plot_pca_reconstruction_error(vectors, plot_dir=plot_dir, idx=target_layer_idx)
+            from sklearn.decomposition import PCA
+            pca = PCA(n_components=2, svd_solver="full")
+            points_2d = pca.fit_transform(vectors)
+            self.plot_sequence_pca(
+                points_2d,
+                completion_steps,
+                completion_edge_flags,
+                plot_dir=plot_dir,
+                idx=target_layer_idx,
+            )
 
         for layer_idx in [target_layer_idx]:
             print("Processing layer", layer_idx)
