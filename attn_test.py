@@ -206,6 +206,71 @@ class AttentionTest:
                     neighbor_str = self.get_last_n_tokens_str(neighbor_prefix, 5)
                     f.write(f"  {neighbor_str}    <{neighbor_toks}>    d:{distances[i, j]}\n")
                 f.write("\n\n")
+
+    def print_completion_neighbors(
+        self,
+        completion_ids: torch.Tensor,
+        hidden_states_tensor: torch.Tensor,
+        plot_dir: str,
+        n_neighbors: int = 5,
+        metric: str = "cosine",
+    ):
+        from sklearn.neighbors import NearestNeighbors
+
+        n_completions, max_generated_length = completion_ids.shape
+        num_layers = hidden_states_tensor.shape[2]
+        layer_idx = 14
+        if layer_idx >= num_layers:
+            raise ValueError(f"Requested layer {layer_idx}, but model has {num_layers} layers.")
+        eos_token_id = self.tokenizer.eos_token_id
+
+        completion_0_ids = []
+        for step_idx in range(max_generated_length):
+            token_id = completion_ids[0, step_idx].item()
+            if eos_token_id is not None and token_id == eos_token_id:
+                break
+            completion_0_ids.append(token_id)
+
+        completion_0_text = self.tokenizer.decode(completion_0_ids, skip_special_tokens=False)
+        completion_0_tokens = self.tokenizer.convert_ids_to_tokens(completion_0_ids)
+        completion_0_pairs = list(zip(completion_0_ids, completion_0_tokens))
+
+        nn_dir = f"{plot_dir}/nn_completion"
+        os.makedirs(nn_dir, exist_ok=True)
+        nn_file = f"{nn_dir}/completion_0_neighbors_{metric}.txt"
+
+        candidate_vectors = []
+        candidate_meta = []
+        for completion_idx in range(1, n_completions):
+            for step_idx in range(max_generated_length):
+                token_id = completion_ids[completion_idx, step_idx].item()
+                if eos_token_id is not None and token_id == eos_token_id:
+                    break
+                vector = hidden_states_tensor[completion_idx, step_idx, layer_idx, :].cpu().numpy()
+                token_str = self.tokenizer.convert_ids_to_tokens([token_id])[0]
+                candidate_vectors.append(vector)
+                candidate_meta.append((completion_idx, step_idx, token_id, token_str))
+
+        if not candidate_vectors:
+            with open(nn_file, "w") as f:
+                f.write("No candidate tokens from other completions to compare against.\n")
+            return
+
+        k = min(n_neighbors, len(candidate_vectors))
+        nbrs = NearestNeighbors(n_neighbors=k, algorithm="auto", metric=metric).fit(candidate_vectors)
+
+        with open(nn_file, "w") as f:
+            f.write("completion_0:\n" + completion_0_text + "\n")
+            f.write(f"completion_0_token_pairs: {completion_0_pairs}\n\n")
+            for step_idx, token_id in enumerate(completion_0_ids):
+                query_vector = hidden_states_tensor[0, step_idx, layer_idx, :].cpu().numpy().reshape(1, -1)
+                distances, indices = nbrs.kneighbors(query_vector)
+                token_str = completion_0_tokens[step_idx]
+                f.write(f"step {step_idx}: {token_id} {token_str}\n")
+                for dist, cand_idx in zip(distances[0], indices[0]):
+                    c_idx, s_idx, c_token_id, c_token_str = candidate_meta[cand_idx]
+                    f.write(f"  nn: c{c_idx} s{s_idx} {c_token_id} {c_token_str} d:{dist}\n")
+                f.write("\n")
         
 
     def plot_hidden_states(self, text_file: str, n_completions: int, metric: str = 'cosine', max_new_tokens: int = 32):
@@ -245,6 +310,8 @@ class AttentionTest:
         
         with open(f"{completions_dir}/all_completions.txt", "w") as f:
             f.write("\n".join(all_completions_content))
+
+        self.print_completion_neighbors(completion_ids, hidden_states_tensor, plot_dir=plot_dir, n_neighbors=5, metric=metric)
 
         for layer_idx in range(num_layers):            
             print("Processing layer", layer_idx)
