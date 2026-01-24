@@ -380,6 +380,13 @@ class AttentionTest:
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}.png", dpi=200)
         plt.close()
 
+        self.plot_sequence_tsne_gradient(
+            points_2d,
+            completion_steps,
+            plot_dir=plot_dir,
+            idx=idx,
+        )
+
         focus_dir = f"{plot_dir}/tsne_sequences_focus"
         os.makedirs(focus_dir, exist_ok=True)
         for focus_idx in range(n_completions):
@@ -572,6 +579,68 @@ class AttentionTest:
                 dpi=200,
             )
             plt.close()
+
+    def plot_sequence_tsne_gradient(
+        self,
+        points_2d: np.ndarray,
+        completion_steps: list[list[int]],
+        plot_dir: str,
+        idx: int,
+        cmap_name: str = "hsv",
+    ):
+        os.makedirs(f"{plot_dir}/tsne_sequences_gradient", exist_ok=True)
+        cmap = plt.get_cmap(cmap_name)
+        plt.figure(figsize=(12, 10))
+        for step_indices in completion_steps:
+            if len(step_indices) < 2:
+                continue
+            coords = points_2d[step_indices]
+            n_steps = len(coords)
+            for i in range(1, n_steps):
+                start = coords[i - 1]
+                end = coords[i]
+                color = cmap(i / (n_steps - 1))
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 0.6,
+                        "color": color,
+                    },
+                )
+            plt.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                s=8,
+                color=[cmap(i / (n_steps - 1)) for i in range(n_steps)],
+            )
+            plt.annotate(
+                "0",
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=8,
+                fontweight="bold",
+            )
+            plt.annotate(
+                "L",
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=8,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("t-SNE with Position Gradient")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/tsne_sequences_gradient/hidden_states_tsne_layer_{idx}.png", dpi=200)
+        plt.close()
 
     def plot_sequence_umap(
         self,
