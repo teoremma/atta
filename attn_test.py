@@ -223,23 +223,28 @@ class AttentionTest:
         points = []
         completion_steps = []
         completion_token_steps = []
+        completion_edge_flags = []
         for completion_idx in range(n_completions):
             step_indices = []
             token_steps = []
+            edge_flags = []
             for step_idx in range(max_generated_length):
                 token_id = completion_ids[completion_idx, step_idx].item()
                 if eos_token_id is not None and token_id == eos_token_id:
                     break
+                token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
+                is_edge = "\n" in token_text
                 if only_newline_tokens:
-                    token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
-                    if "\n" not in token_text:
+                    if not is_edge:
                         continue
                 vector = hidden_states_tensor[completion_idx, step_idx, idx, :].cpu().numpy()
                 step_indices.append(len(points))
                 token_steps.append(step_idx)
+                edge_flags.append(is_edge)
                 points.append(vector)
             completion_steps.append(step_indices)
             completion_token_steps.append(token_steps)
+            completion_edge_flags.append(edge_flags)
 
         if not points:
             return
@@ -256,6 +261,20 @@ class AttentionTest:
                 continue
             coords = points_2d[step_indices]
             plt.scatter(coords[:, 0], coords[:, 1], s=12, color=cmap(completion_idx), label=f"c{completion_idx}")
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 0.8,
+                        "color": cmap(completion_idx),
+                        "linestyle": ":",
+                    },
+                )
             plt.annotate(
                 str(completion_idx),
                 xy=(coords[0, 0], coords[0, 1]),
@@ -275,15 +294,7 @@ class AttentionTest:
                 fontweight="bold",
                 bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
             )
-            for i in range(len(step_indices) - 1):
-                start = coords[i]
-                end = coords[i + 1]
-                plt.annotate(
-                    "",
-                    xy=(end[0], end[1]),
-                    xytext=(start[0], start[1]),
-                    arrowprops={"arrowstyle": "->", "linewidth": 0.6, "color": cmap(completion_idx)},
-                )
+            # edge-only arrows removed for now
 
         plt.title("t-SNE of Hidden State Vectors by Completion")
         plt.xlabel("Dimension 1")
@@ -313,6 +324,21 @@ class AttentionTest:
                     alpha=alpha,
                     label=f"c{completion_idx}",
                 )
+                for i in range(1, len(coords)):
+                    start = coords[i - 1]
+                    end = coords[i]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                        "arrowstyle": "->",
+                            "linewidth": 0.8,
+                            "color": cmap(completion_idx),
+                            "alpha": alpha,
+                            "linestyle": ":",
+                        },
+                    )
                 if is_focus:
                     plt.annotate(
                         str(completion_idx),
@@ -333,6 +359,17 @@ class AttentionTest:
                         fontweight="bold",
                         bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
                     )
+                    for point_idx in range(len(coords)):
+                        plt.annotate(
+                            str(point_idx),
+                            xy=(coords[point_idx, 0], coords[point_idx, 1]),
+                            xytext=(0, -7),
+                            textcoords="offset points",
+                            fontsize=5,
+                            color="black",
+                            ha="center",
+                            va="top",
+                        )
                     for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
                         step_idx = completion_token_steps[completion_idx][local_idx]
                         token_text = self.tokenizer.decode(
@@ -375,20 +412,7 @@ class AttentionTest:
                             ha="left",
                             va="bottom",
                         )
-                for i in range(len(step_indices) - 1):
-                    start = coords[i]
-                    end = coords[i + 1]
-                    plt.annotate(
-                        "",
-                        xy=(end[0], end[1]),
-                        xytext=(start[0], start[1]),
-                        arrowprops={
-                            "arrowstyle": "->",
-                            "linewidth": line_width,
-                            "color": cmap(completion_idx),
-                            "alpha": alpha,
-                        },
-                    )
+                # edge-only arrows removed for now
 
             plt.title(f"t-SNE by Completion (focus c{focus_idx})")
             plt.xlabel("Dimension 1")
@@ -531,6 +555,17 @@ class AttentionTest:
                         fontweight="bold",
                         bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
                     )
+                    for point_idx in range(len(coords)):
+                        plt.annotate(
+                            str(point_idx),
+                            xy=(coords[point_idx, 0], coords[point_idx, 1]),
+                            xytext=(0, -7),
+                            textcoords="offset points",
+                            fontsize=5,
+                            color="black",
+                            ha="center",
+                            va="top",
+                        )
                     for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
                         step_idx = completion_token_steps[completion_idx][local_idx]
                         token_text = self.tokenizer.decode(
@@ -827,7 +862,7 @@ class AttentionTest:
                 completion_ids,
                 layer_idx,
                 plot_dir=plot_dir,
-                only_newline_tokens=only_newline_tokens,
+                only_newline_tokens=False,
             )
             self.plot_sequence_umap(
                 hidden_states_tensor,
