@@ -50,6 +50,23 @@ class AttentionTest:
                 scores[:, token_id] += bias
             return scores
 
+    def format_prefix_with_marker(self, prefix_ids: tuple[int, ...]) -> str:
+        if not prefix_ids:
+            return ""
+        start_idx = 0
+        for idx in range(len(prefix_ids) - 2, -1, -1):
+            token_text = self.tokenizer.decode([prefix_ids[idx]], skip_special_tokens=False)
+            if "\n" in token_text:
+                start_idx = idx + 1
+                break
+        prev_ids = list(prefix_ids[start_idx:-1])
+        prev_text = self.tokenizer.decode(prev_ids, skip_special_tokens=False) if prev_ids else ""
+        last_token_text = self.tokenizer.decode([prefix_ids[-1]], skip_special_tokens=False)
+        def escape_text(text: str) -> str:
+            return text.replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
+        line_prefix = prev_text.split("\n")[-1] if prev_text else ""
+        return escape_text(line_prefix) + "|>" + escape_text(last_token_text) + "<|"
+
     def get_hidden_states(self, prompt: str, n_completions: int, max_new_tokens: int = 32) -> dict:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         prompt_length = inputs.input_ids.shape[1]
@@ -182,12 +199,22 @@ class AttentionTest:
         plt.savefig(f"{plot_dir}/dendrogram/hidden_states_dendrogram_{idx}_{metric}.png", dpi=200)
         plt.close()
     
-    def find_nearest_neighbors(self, embeddings: dict, n_neighbors: int, index: int, plot_dir: str, metric: str = 'cosine'):
+    def find_nearest_neighbors(
+        self,
+        embeddings: dict,
+        prefix_meta: dict,
+        n_completions: int,
+        n_neighbors: int,
+        index: int,
+        plot_dir: str,
+        metric: str = 'cosine',
+    ):
         # for each hidden state vector, find the n_neighbors nearest neighbors in the embedding space and print their corresponding prefixes
         from sklearn.neighbors import NearestNeighbors
         hidden_state_vectors = np.array(list(embeddings.values()))
         prefixes = list(embeddings.keys())
-        nbrs = NearestNeighbors(n_neighbors=n_neighbors + 1, algorithm='auto', metric=metric).fit(hidden_state_vectors)
+        max_neighbors = min(len(hidden_state_vectors), n_completions * n_neighbors)
+        nbrs = NearestNeighbors(n_neighbors=max_neighbors, algorithm='auto', metric=metric).fit(hidden_state_vectors)
         distances, indices = nbrs.kneighbors(hidden_state_vectors)
         # make sure the plot directory exists
         os.makedirs(f"{plot_dir}/nn", exist_ok=True)
@@ -195,16 +222,24 @@ class AttentionTest:
         nn_file = f"{plot_dir}/nn/nearest_neighbors_layer_{index}_{metric}.txt"
         with open(nn_file, "w") as f:
             for i, prefix in enumerate(prefixes):
-                prefix_toks = self.tokenizer.batch_decode(prefix)
-                prefix_str = self.get_last_n_tokens_str(prefix, 5)
-                f.write(f"Prefix: {prefix_str}    <{prefix_toks}>\n")
-                f.write(f"Nearest neighbors:\n")
-                for j in range(1, n_neighbors + 1):
+                prefix_marker = self.format_prefix_with_marker(prefix)
+                completion_idx, step_idx = prefix_meta.get(prefix, (-1, -1))
+                f.write(f"Prefix: `{prefix_marker}` ({completion_idx}, {step_idx})\n")
+                f.write("Nearest neighbors:\n")
+                added = 0
+                for j in range(1, max_neighbors):
                     neighbor_idx = indices[i, j]
                     neighbor_prefix = prefixes[neighbor_idx]
-                    neighbor_toks = self.tokenizer.batch_decode(neighbor_prefix)
-                    neighbor_str = self.get_last_n_tokens_str(neighbor_prefix, 5)
-                    f.write(f"  {neighbor_str}    <{neighbor_toks}>    d:{distances[i, j]}\n")
+                    n_completion_idx, n_step_idx = prefix_meta.get(neighbor_prefix, (-1, -1))
+                    if n_completion_idx == completion_idx:
+                        continue
+                    neighbor_marker = self.format_prefix_with_marker(neighbor_prefix)
+                    f.write(
+                        f"  d:{distances[i, j]:.4f} `{neighbor_marker}` ({n_completion_idx}, {n_step_idx})\n"
+                    )
+                    added += 1
+                    if added >= n_neighbors:
+                        break
                 f.write("\n\n")
 
     def print_completion_neighbors(
@@ -316,6 +351,7 @@ class AttentionTest:
         for layer_idx in range(num_layers):            
             print("Processing layer", layer_idx)
             embeddings = {}
+            prefix_meta = {}
             layer_hidden_states = hidden_states_tensor[:, :, layer_idx, :]
             # layer_hidden_states has shape (n_completions, max_generated_length, hidden_size)
             # we want to reshape it to (n_completions * max_generated_length, hidden_size)
@@ -324,9 +360,9 @@ class AttentionTest:
                     # if last token is eos, skip
                     if completion_ids[completion_idx, step_idx] == self.tokenizer.eos_token_id:
                         continue
-                    # if last token does not contain a newline, skip
-                    if "\n" not in self.tokenizer.decode(completion_ids[completion_idx, step_idx]):
-                        continue
+                    # # if last token does not contain a newline, skip
+                    # if "\n" not in self.tokenizer.decode(completion_ids[completion_idx, step_idx]):
+                    #     continue
                     completion_prefix_ids = completion_ids[completion_idx, :step_idx+1]
                     # print(self.tokenizer.batch_decode(completion_prefix_ids))
                     assert completion_prefix_ids.shape == (step_idx + 1,)
@@ -336,6 +372,7 @@ class AttentionTest:
                     prefix_key = tuple(completion_prefix_ids.cpu().numpy())
                     if prefix_key not in embeddings:
                         embeddings[prefix_key] = hidden_state_vector.cpu().numpy()
+                        prefix_meta[prefix_key] = (completion_idx, step_idx)
                     else:
                         # make sure the hidden state vector is the same as the one already in the dictionary
                         existing_vector = embeddings[prefix_key]
@@ -344,7 +381,15 @@ class AttentionTest:
 
             self.plot_embeddings(embeddings, layer_idx, plot_dir=plot_dir)
             self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
-            self.find_nearest_neighbors(embeddings, n_neighbors=5, index=layer_idx, plot_dir=plot_dir, metric=metric)
+            self.find_nearest_neighbors(
+                embeddings,
+                prefix_meta,
+                n_completions,
+                n_neighbors=5,
+                index=layer_idx,
+                plot_dir=plot_dir,
+                metric=metric,
+            )
         
 
 def test_attention(model_id: str = None, text_file: str = None, n_completions: int = 10, metric: str = "cosine", max_new_tokens: int = 32):
