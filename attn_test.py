@@ -69,6 +69,39 @@ class AttentionTest:
         line_prefix = prev_text.split("\n")[-1] if prev_text else ""
         return escape_text(line_prefix) + "|>" + escape_text(last_token_text) + "<|"
 
+    def format_prefix_line_and_token(self, prefix_ids: tuple[int, ...]) -> tuple[str, str]:
+        if not prefix_ids:
+            return "", ""
+        start_idx = 0
+        for idx in range(len(prefix_ids) - 2, -1, -1):
+            token_text = self.tokenizer.decode([prefix_ids[idx]], skip_special_tokens=False)
+            if "\n" in token_text:
+                start_idx = idx + 1
+                break
+        prev_ids = list(prefix_ids[start_idx:-1])
+        prev_text = self.tokenizer.decode(prev_ids, skip_special_tokens=False) if prev_ids else ""
+        last_token_text = self.tokenizer.decode([prefix_ids[-1]], skip_special_tokens=False)
+        if last_token_text == "":
+            last_token_text = self.tokenizer.convert_ids_to_tokens([prefix_ids[-1]])[0]
+
+        def escape_text(text: str) -> str:
+            return text.replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
+
+        line_prefix = prev_text.split("\n")[-1] if prev_text else ""
+        return escape_text(line_prefix), escape_text(last_token_text)
+
+    def text_width_points(self, text: str, fontsize: int, fontfamily: str) -> float:
+        if not text:
+            return 0.0
+        try:
+            from matplotlib.font_manager import FontProperties
+            from matplotlib.textpath import TextPath
+            font_prop = FontProperties(family=fontfamily, size=fontsize)
+            text_path = TextPath((0, 0), text, prop=font_prop)
+            return text_path.get_extents().width
+        except Exception:
+            return len(text) * fontsize * 0.6
+
     def get_hidden_states(self, prompt: str, n_completions: int, max_new_tokens: int = 32) -> dict:
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         prompt_length = inputs.input_ids.shape[1]
@@ -290,21 +323,22 @@ class AttentionTest:
                         fontweight="bold",
                         bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
                     )
-                    label_offsets = [(4, 4), (4, -10), (10, 4), (10, -10), (-6, 4), (-6, -10)]
-                    for local_idx, step_idx in enumerate(completion_token_steps[completion_idx]):
+                    for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
+                        step_idx = completion_token_steps[completion_idx][local_idx]
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
-                        label = f"`{self.format_prefix_with_marker(prefix_ids)}`"
-                        offset = label_offsets[local_idx % len(label_offsets)]
+                        label = self.format_prefix_with_marker(prefix_ids)
                         plt.annotate(
                             label,
-                            xy=(coords[local_idx, 0], coords[local_idx, 1]),
-                            xytext=offset,
+                            xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
+                            xytext=(0, 6),
                             textcoords="offset points",
                             fontsize=6,
                             fontfamily="monospace",
                             color="black",
+                            ha="center",
+                            va="bottom",
                         )
                 for i in range(len(step_indices) - 1):
                     start = coords[i]
@@ -457,21 +491,22 @@ class AttentionTest:
                         fontweight="bold",
                         bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
                     )
-                    label_offsets = [(4, 4), (4, -10), (10, 4), (10, -10), (-6, 4), (-6, -10)]
-                    for local_idx, step_idx in enumerate(completion_token_steps[completion_idx]):
+                    for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
+                        step_idx = completion_token_steps[completion_idx][local_idx]
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
-                        label = f"`{self.format_prefix_with_marker(prefix_ids)}`"
-                        offset = label_offsets[local_idx % len(label_offsets)]
+                        label = self.format_prefix_with_marker(prefix_ids)
                         plt.annotate(
                             label,
-                            xy=(coords[local_idx, 0], coords[local_idx, 1]),
-                            xytext=offset,
+                            xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
+                            xytext=(0, 6),
                             textcoords="offset points",
                             fontsize=6,
                             fontfamily="monospace",
                             color="black",
+                            ha="center",
+                            va="bottom",
                         )
                 for i in range(len(step_indices) - 1):
                     start = coords[i]
