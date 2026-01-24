@@ -1,0 +1,4 @@
+Write a function that implements a basic sorting algorithm.
+
+```python
+def sort(a):

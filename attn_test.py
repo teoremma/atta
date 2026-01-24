@@ -315,7 +315,7 @@ class AttentionTest:
                 fontweight="bold",
             )
             plt.annotate(
-                "L",
+                str(completion_idx),
                 xy=(coords[-1, 0], coords[-1, 1]),
                 xytext=(3, 3),
                 textcoords="offset points",
@@ -456,7 +456,7 @@ class AttentionTest:
                         fontweight="bold",
                     )
                     plt.annotate(
-                        "L",
+                        str(completion_idx),
                         xy=(coords[-1, 0], coords[-1, 1]),
                         xytext=(3, 3),
                         textcoords="offset points",
@@ -649,7 +649,7 @@ class AttentionTest:
                 fontweight="bold",
             )
             plt.annotate(
-                "L",
+                str(completion_idx),
                 xy=(coords[-1, 0], coords[-1, 1]),
                 xytext=(3, 3),
                 textcoords="offset points",
@@ -721,17 +721,40 @@ class AttentionTest:
             return
         pca = PCA(n_components=max_components, svd_solver="full")
         pca.fit(vectors)
-        explained = pca.explained_variance_
-        residual = explained.sum() - np.cumsum(explained)
-        mse = residual / vectors.shape[1]
+        explained_ratio = pca.explained_variance_ratio_
+        cumulative = np.cumsum(explained_ratio)
+        n90 = int(np.searchsorted(cumulative, 0.9, side="left") + 1)
+        n99 = int(np.searchsorted(cumulative, 0.99, side="left") + 1)
         os.makedirs(f"{plot_dir}/pca", exist_ok=True)
         plt.figure(figsize=(10, 6))
-        plt.plot(range(1, max_components + 1), mse, marker="o", markersize=3)
-        plt.title("PCA Reconstruction Error vs. Components")
+        plt.plot(range(1, max_components + 1), cumulative, marker="o", markersize=3)
+        plt.axhline(0.9, color="gray", linestyle="--", linewidth=0.8)
+        plt.axhline(0.99, color="gray", linestyle="--", linewidth=0.8)
+        plt.axvline(n90, color="gray", linestyle="--", linewidth=0.8)
+        plt.axvline(n99, color="gray", linestyle="--", linewidth=0.8)
+        plt.annotate(
+            f"{n90}",
+            xy=(n90, 0.9),
+            xytext=(5, -10),
+            textcoords="offset points",
+            fontsize=8,
+            color="black",
+        )
+        plt.annotate(
+            f"{n99}",
+            xy=(n99, 0.99),
+            xytext=(5, -10),
+            textcoords="offset points",
+            fontsize=8,
+            color="black",
+        )
+        plt.title(
+            f"PCA Cumulative Explained Variance (dim={vectors.shape[1]}, 90% @ {n90}, 99% @ {n99})"
+        )
         plt.xlabel("Number of Components")
-        plt.ylabel("Reconstruction MSE")
+        plt.ylabel("Cumulative Explained Variance Ratio")
         plt.tight_layout()
-        plt.savefig(f"{plot_dir}/pca/reconstruction_error_layer_{idx}.png", dpi=200)
+        plt.savefig(f"{plot_dir}/pca/explained_variance_layer_{idx}.png", dpi=200)
         plt.close()
 
     def plot_sequence_tsne_gradient(
@@ -745,7 +768,7 @@ class AttentionTest:
         os.makedirs(f"{plot_dir}/tsne_sequences_gradient", exist_ok=True)
         cmap = plt.get_cmap(cmap_name)
         plt.figure(figsize=(12, 10))
-        for step_indices in completion_steps:
+        for completion_idx, step_indices in enumerate(completion_steps):
             if len(step_indices) < 2:
                 continue
             coords = points_2d[step_indices]
@@ -780,7 +803,7 @@ class AttentionTest:
                 fontweight="bold",
             )
             plt.annotate(
-                "L",
+                str(completion_idx),
                 xy=(coords[-1, 0], coords[-1, 1]),
                 xytext=(3, 3),
                 textcoords="offset points",
@@ -862,7 +885,7 @@ class AttentionTest:
                 fontweight="bold",
             )
             plt.annotate(
-                "L",
+                str(completion_idx),
                 xy=(coords[-1, 0], coords[-1, 1]),
                 xytext=(3, 3),
                 textcoords="offset points",
@@ -921,7 +944,7 @@ class AttentionTest:
                         fontweight="bold",
                     )
                     plt.annotate(
-                        "L",
+                        str(completion_idx),
                         xy=(coords[-1, 0], coords[-1, 1]),
                         xytext=(3, 3),
                         textcoords="offset points",

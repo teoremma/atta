@@ -1,0 +1,3 @@
+Write a function that implements a simple graph traversal.
+```python
+def traverse(g):
