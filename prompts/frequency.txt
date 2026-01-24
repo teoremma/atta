@@ -1,0 +1,4 @@
+Write a python function to find the frequency of the largest value in a given array.
+
+```python
+def frequency_of_largest(arr):

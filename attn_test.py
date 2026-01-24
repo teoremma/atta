@@ -13,10 +13,12 @@ import os
 LOGIT_BIAS_VALUE = -1e6
 LOGIT_BIAS_TOKEN_IDS = (
     2,
+    442,
     671,
     3190,
     4210,
     7129,
+    7704,
     11166,
     11456,
     12599,
@@ -330,6 +332,173 @@ class AttentionTest:
             )
             plt.close()
 
+    def plot_sequence_umap(
+        self,
+        hidden_states_tensor: torch.Tensor,
+        completion_ids: torch.Tensor,
+        idx: int,
+        plot_dir: str,
+    ):
+        try:
+            import umap
+        except ImportError:
+            print("UMAP not available; install `umap-learn` to enable UMAP plots.")
+            return
+
+        os.makedirs(f"{plot_dir}/umap_sequences", exist_ok=True)
+        n_completions, max_generated_length, _, hidden_size = hidden_states_tensor.shape
+        eos_token_id = self.tokenizer.eos_token_id
+
+        points = []
+        completion_steps = []
+        completion_token_steps = []
+        for completion_idx in range(n_completions):
+            step_indices = []
+            token_steps = []
+            for step_idx in range(max_generated_length):
+                token_id = completion_ids[completion_idx, step_idx].item()
+                if eos_token_id is not None and token_id == eos_token_id:
+                    break
+                vector = hidden_states_tensor[completion_idx, step_idx, idx, :].cpu().numpy()
+                step_indices.append(len(points))
+                token_steps.append(step_idx)
+                points.append(vector)
+            completion_steps.append(step_indices)
+            completion_token_steps.append(token_steps)
+
+        if not points:
+            return
+
+        points_array = np.array(points)
+        reducer = umap.UMAP(n_components=2, random_state=0)
+        points_2d = reducer.fit_transform(points_array)
+
+        plt.figure(figsize=(12, 10))
+        cmap = plt.get_cmap("tab20", max(n_completions, 1))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            coords = points_2d[step_indices]
+            plt.scatter(coords[:, 0], coords[:, 1], s=12, color=cmap(completion_idx), label=f"c{completion_idx}")
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                "L",
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+            for i in range(len(step_indices) - 1):
+                start = coords[i]
+                end = coords[i + 1]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={"arrowstyle": "->", "linewidth": 0.6, "color": cmap(completion_idx)},
+                )
+
+        plt.title("UMAP of Hidden State Vectors by Completion")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/umap_sequences/hidden_states_umap_layer_{idx}.png", dpi=200)
+        plt.close()
+
+        focus_dir = f"{plot_dir}/umap_sequences_focus"
+        os.makedirs(focus_dir, exist_ok=True)
+        for focus_idx in range(n_completions):
+            plt.figure(figsize=(12, 10))
+            for completion_idx, step_indices in enumerate(completion_steps):
+                if not step_indices:
+                    continue
+                coords = points_2d[step_indices]
+                is_focus = completion_idx == focus_idx
+                alpha = 1.0 if is_focus else 0.15
+                line_width = 0.8 if is_focus else 0.4
+                point_size = 14 if is_focus else 10
+                plt.scatter(
+                    coords[:, 0],
+                    coords[:, 1],
+                    s=point_size,
+                    color=cmap(completion_idx),
+                    alpha=alpha,
+                    label=f"c{completion_idx}",
+                )
+                if is_focus:
+                    plt.annotate(
+                        str(completion_idx),
+                        xy=(coords[0, 0], coords[0, 1]),
+                        xytext=(3, 3),
+                        textcoords="offset points",
+                        color="black",
+                        fontsize=9,
+                        fontweight="bold",
+                    )
+                    plt.annotate(
+                        "L",
+                        xy=(coords[-1, 0], coords[-1, 1]),
+                        xytext=(3, 3),
+                        textcoords="offset points",
+                        color="black",
+                        fontsize=9,
+                        fontweight="bold",
+                        bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+                    )
+                    label_offsets = [(4, 4), (4, -10), (10, 4), (10, -10), (-6, 4), (-6, -10)]
+                    for local_idx, step_idx in enumerate(completion_token_steps[completion_idx]):
+                        prefix_ids = tuple(
+                            completion_ids[completion_idx, : step_idx + 1].tolist()
+                        )
+                        label = f"`{self.format_prefix_with_marker(prefix_ids)}`"
+                        offset = label_offsets[local_idx % len(label_offsets)]
+                        plt.annotate(
+                            label,
+                            xy=(coords[local_idx, 0], coords[local_idx, 1]),
+                            xytext=offset,
+                            textcoords="offset points",
+                            fontsize=6,
+                            fontfamily="monospace",
+                            color="black",
+                        )
+                for i in range(len(step_indices) - 1):
+                    start = coords[i]
+                    end = coords[i + 1]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": line_width,
+                            "color": cmap(completion_idx),
+                            "alpha": alpha,
+                        },
+                    )
+
+            plt.title(f"UMAP by Completion (focus c{focus_idx})")
+            plt.xlabel("Dimension 1")
+            plt.ylabel("Dimension 2")
+            plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+            plt.tight_layout()
+            plt.savefig(
+                f"{focus_dir}/hidden_states_umap_layer_{idx}_focus_c{focus_idx}.png",
+                dpi=200,
+            )
+            plt.close()
+
 
     def cluster_embeddings(self, embeddings: dict, n_clusters: int, idx: int, plot_dir: str, metric: str = 'cosine'):
         hidden_state_vectors = np.array(list(embeddings.values()))
@@ -547,6 +716,7 @@ class AttentionTest:
 
             self.plot_embeddings(embeddings, layer_idx, plot_dir=plot_dir)
             self.plot_sequence_tsne(hidden_states_tensor, completion_ids, layer_idx, plot_dir=plot_dir)
+            self.plot_sequence_umap(hidden_states_tensor, completion_ids, layer_idx, plot_dir=plot_dir)
             self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
             self.find_nearest_neighbors(
                 embeddings,

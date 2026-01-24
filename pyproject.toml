@@ -10,4 +10,5 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "torch>=2.9.0",
     "transformers>=4.57.1",
+    "umap-learn>=0.5.11",
 ]
