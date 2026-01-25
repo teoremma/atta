@@ -395,6 +395,16 @@ class AttentionTest:
             idx=idx,
         )
 
+        self.plot_tsne_clusters(
+            points_2d,
+            points_array,
+            plot_dir=plot_dir,
+            idx=idx,
+            xlim=xlim,
+            ylim=ylim,
+            n_sequences=n_completions,
+        )
+
         # Edge-only plot
         plt.figure(figsize=(12, 10))
         for completion_idx, step_indices in enumerate(completion_steps):
@@ -961,6 +971,46 @@ class AttentionTest:
         plt.ylabel("Dimension 2")
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences_gradient/hidden_states_tsne_layer_{idx}.png", dpi=200)
+        plt.close()
+
+    def plot_tsne_clusters(
+        self,
+        points_2d: np.ndarray,
+        vectors: np.ndarray,
+        plot_dir: str,
+        idx: int,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        n_sequences: int,
+    ):
+        from sklearn.cluster import AgglomerativeClustering
+
+        n_clusters = max(2, int(round(len(vectors) / max(n_sequences, 1))) * 2)
+        if len(vectors) < n_clusters:
+            return
+
+        clustering = AgglomerativeClustering(
+            n_clusters=n_clusters,
+            metric="cosine",
+            linkage="average",
+        )
+        labels = clustering.fit_predict(vectors)
+
+        plt.figure(figsize=(12, 10))
+        cmap = plt.get_cmap("tab10")
+        colors = [cmap(label % 10) for label in labels]
+        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        plt.title(f"t-SNE Colored by Clusters (k={n_clusters}, target size≈{n_sequences})")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.tight_layout()
+        os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
+        plt.savefig(
+            f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_clusters.png",
+            dpi=200,
+        )
         plt.close()
 
     def plot_sequence_umap(
