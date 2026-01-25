@@ -388,6 +388,148 @@ class AttentionTest:
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}.png", dpi=200)
         plt.close()
 
+        # Angle-colored arrows plot
+        plt.figure(figsize=(12, 10))
+        arrow_cmap = plt.get_cmap("hsv")
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            if len(edge_coords):
+                plt.scatter(
+                    edge_coords[:, 0],
+                    edge_coords[:, 1],
+                    s=28,
+                    color=color,
+                    label=None,
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                hue = (angle + np.pi) / (2 * np.pi)
+                arrow_color = arrow_cmap(hue)
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 0.8,
+                        "color": arrow_color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(edge_plot_indices) > 1:
+                edge_coords = coords[edge_plot_indices]
+                for i in range(len(edge_coords) - 1):
+                    start = edge_coords[i]
+                    end = edge_coords[i + 1]
+                    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                    hue = (angle + np.pi) / (2 * np.pi)
+                    arrow_color = arrow_cmap(hue)
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": arrow_color,
+                            "linestyle": "-",
+                        },
+                    )
+            edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+            if edge_only and len(coords) > 1:
+                first_edge = edge_only[0]
+                last_edge = edge_only[-1]
+                if first_edge != 0:
+                    start = coords[0]
+                    end = coords[first_edge]
+                    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                    hue = (angle + np.pi) / (2 * np.pi)
+                    arrow_color = arrow_cmap(hue)
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": arrow_color,
+                            "linestyle": "-",
+                        },
+                    )
+                if last_edge != len(coords) - 1:
+                    start = coords[last_edge]
+                    end = coords[len(coords) - 1]
+                    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                    hue = (angle + np.pi) / (2 * np.pi)
+                    arrow_color = arrow_cmap(hue)
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": arrow_color,
+                            "linestyle": "-",
+                        },
+                    )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("t-SNE with Arrows Colored by Angle")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_angle.png", dpi=200)
+        plt.close()
+
         self.plot_sequence_tsne_gradient(
             points_2d,
             completion_steps,
@@ -398,6 +540,8 @@ class AttentionTest:
         self.plot_tsne_clusters(
             points_2d,
             points_array,
+            completion_steps,
+            completion_edge_flags,
             plot_dir=plot_dir,
             idx=idx,
             xlim=xlim,
@@ -970,13 +1114,16 @@ class AttentionTest:
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
         plt.tight_layout()
-        plt.savefig(f"{plot_dir}/tsne_sequences_gradient/hidden_states_tsne_layer_{idx}.png", dpi=200)
+        os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
+        plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_gradient.png", dpi=200)
         plt.close()
 
     def plot_tsne_clusters(
         self,
         points_2d: np.ndarray,
         vectors: np.ndarray,
+        completion_steps: list[list[int]],
+        completion_edge_flags: list[list[bool]],
         plot_dir: str,
         idx: int,
         xlim: tuple[float, float],
@@ -1000,6 +1147,96 @@ class AttentionTest:
         cmap = plt.get_cmap("tab10")
         colors = [cmap(label % 10) for label in labels]
         plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        for cluster_id in range(n_clusters):
+            idxs = np.where(labels == cluster_id)[0]
+            if len(idxs) == 0:
+                continue
+            first_idx = idxs[0]
+            plt.annotate(
+                str(cluster_id),
+                xy=(points_2d[first_idx, 0], points_2d[first_idx, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=8,
+                fontweight="bold",
+            )
+
+        # Draw arrows per sequence with cluster-based coloring.
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                color = colors[step_indices[i]]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            if len(edge_plot_indices) > 1:
+                edge_coords = coords[edge_plot_indices]
+                for i in range(len(edge_coords) - 1):
+                    start = edge_coords[i]
+                    end = edge_coords[i + 1]
+                    color = colors[step_indices[edge_plot_indices[i + 1]]]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+            edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+            if edge_only and len(coords) > 1:
+                first_edge = edge_only[0]
+                last_edge = edge_only[-1]
+                if first_edge != 0:
+                    color = colors[step_indices[first_edge]]
+                    plt.annotate(
+                        "",
+                        xy=(coords[first_edge][0], coords[first_edge][1]),
+                        xytext=(coords[0][0], coords[0][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+                if last_edge != len(coords) - 1:
+                    color = colors[step_indices[-1]]
+                    plt.annotate(
+                        "",
+                        xy=(coords[-1][0], coords[-1][1]),
+                        xytext=(coords[last_edge][0], coords[last_edge][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+
         plt.title(f"t-SNE Colored by Clusters (k={n_clusters}, target size≈{n_sequences})")
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")

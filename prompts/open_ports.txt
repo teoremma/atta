@@ -1,0 +1,5 @@
+User:
+Write a Python script that prints all open ports in the current system.
+
+Assistant:
+```python
