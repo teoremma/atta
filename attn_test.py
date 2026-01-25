@@ -24,6 +24,7 @@ LOGIT_BIAS_TOKEN_IDS = (
     12599,
 )
 LOGIT_BIAS = {token_id: LOGIT_BIAS_VALUE for token_id in LOGIT_BIAS_TOKEN_IDS}
+ARROW_MUTATION_SCALE = 14
 
 def timestamp():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -300,6 +301,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 0.8,
                         "color": color,
                         "linestyle": (0, (1, 3)),
@@ -338,6 +340,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -354,6 +357,7 @@ class AttentionTest:
                         xytext=(coords[0][0], coords[0][1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -366,6 +370,7 @@ class AttentionTest:
                         xytext=(coords[last_edge][0], coords[last_edge][1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -436,6 +441,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 0.8,
                         "color": arrow_color,
                         "linestyle": (0, (1, 3)),
@@ -458,6 +464,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": arrow_color,
                             "linestyle": "-",
@@ -479,6 +486,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": arrow_color,
                             "linestyle": "-",
@@ -496,6 +504,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": arrow_color,
                             "linestyle": "-",
@@ -528,6 +537,88 @@ class AttentionTest:
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_angle.png", dpi=200)
+        plt.close()
+
+        # Angle-colored arrows plot without edge components
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            if len(edge_coords):
+                plt.scatter(
+                    edge_coords[:, 0],
+                    edge_coords[:, 1],
+                    s=28,
+                    color=color,
+                    label=None,
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                hue = (angle + np.pi) / (2 * np.pi)
+                arrow_color = arrow_cmap(hue)
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": arrow_color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("t-SNE with Arrows Colored by Angle (No Edge Components)")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_angle_no_edges.png", dpi=200)
         plt.close()
 
         self.plot_sequence_tsne_gradient(
@@ -582,6 +673,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 1.6,
                         "color": color,
                         "linestyle": "-",
@@ -651,6 +743,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 0.8,
                         "color": color,
                         "linestyle": (0, (1, 3)),
@@ -684,6 +777,14 @@ class AttentionTest:
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_no_edges.png", dpi=200)
         plt.close()
+
+        self.plot_tsne_density_kde(
+            points_2d,
+            plot_dir=plot_dir,
+            idx=idx,
+            xlim=xlim,
+            ylim=ylim,
+        )
 
         focus_dir = f"{plot_dir}/tsne_sequences_focus"
         os.makedirs(focus_dir, exist_ok=True)
@@ -737,6 +838,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 0.8,
                             "color": color,
                             "alpha": alpha,
@@ -828,6 +930,7 @@ class AttentionTest:
                             xytext=(start[0], start[1]),
                             arrowprops={
                                 "arrowstyle": "->",
+                                "mutation_scale": ARROW_MUTATION_SCALE,
                                 "linewidth": line_width + 0.9,
                                 "color": color,
                                 "alpha": alpha,
@@ -845,6 +948,7 @@ class AttentionTest:
                             xytext=(coords[0][0], coords[0][1]),
                             arrowprops={
                                 "arrowstyle": "->",
+                                "mutation_scale": ARROW_MUTATION_SCALE,
                                 "linewidth": line_width + 0.9,
                                 "color": color,
                                 "alpha": alpha,
@@ -858,6 +962,7 @@ class AttentionTest:
                             xytext=(coords[last_edge][0], coords[last_edge][1]),
                             arrowprops={
                                 "arrowstyle": "->",
+                                "mutation_scale": ARROW_MUTATION_SCALE,
                                 "linewidth": line_width + 0.9,
                                 "color": color,
                                 "alpha": alpha,
@@ -932,6 +1037,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 0.8,
                         "color": color,
                         "linestyle": (0, (1, 3)),
@@ -970,6 +1076,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -986,6 +1093,7 @@ class AttentionTest:
                         xytext=(coords[0][0], coords[0][1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -998,6 +1106,7 @@ class AttentionTest:
                         xytext=(coords[last_edge][0], coords[last_edge][1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -1081,6 +1190,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 0.6,
                         "color": color,
                     },
@@ -1184,6 +1294,7 @@ class AttentionTest:
                     xytext=(start[0], start[1]),
                     arrowprops={
                         "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
                         "linewidth": 0.8,
                         "color": color,
                         "linestyle": (0, (1, 3)),
@@ -1201,6 +1312,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -1218,6 +1330,7 @@ class AttentionTest:
                         xytext=(coords[0][0], coords[0][1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -1231,6 +1344,7 @@ class AttentionTest:
                         xytext=(coords[last_edge][0], coords[last_edge][1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": 1.6,
                             "color": color,
                             "linestyle": "-",
@@ -1246,6 +1360,126 @@ class AttentionTest:
         os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
         plt.savefig(
             f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_clusters.png",
+            dpi=200,
+        )
+        plt.close()
+
+        # Cluster plot without edge components
+        plt.figure(figsize=(12, 10))
+        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        for cluster_id in range(n_clusters):
+            idxs = np.where(labels == cluster_id)[0]
+            if len(idxs) == 0:
+                continue
+            first_idx = idxs[0]
+            plt.annotate(
+                str(cluster_id),
+                xy=(points_2d[first_idx, 0], points_2d[first_idx, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=8,
+                fontweight="bold",
+            )
+
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            coords = points_2d[step_indices]
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                color = colors[step_indices[i]]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+
+        plt.title(f"t-SNE Colored by Clusters (k={n_clusters}, target size≈{n_sequences}) (No Edge Components)")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.tight_layout()
+        os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
+        plt.savefig(
+            f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_clusters_no_edges.png",
+            dpi=200,
+        )
+        plt.close()
+
+    def plot_tsne_density(
+        self,
+        points_2d: np.ndarray,
+        plot_dir: str,
+        idx: int,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        bins: int = 150,
+    ):
+        os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
+        plt.figure(figsize=(12, 10))
+        plt.hist2d(points_2d[:, 0], points_2d[:, 1], bins=bins, cmap="inferno")
+        plt.title("t-SNE Density (All Points)")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        plt.tight_layout()
+        plt.savefig(
+            f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_density.png",
+            dpi=200,
+        )
+        plt.close()
+
+    def plot_tsne_density_kde(
+        self,
+        points_2d: np.ndarray,
+        plot_dir: str,
+        idx: int,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        grid_size: int = 800,
+        bandwidth: float = 0.5,
+    ):
+        from sklearn.neighbors import KernelDensity
+
+        os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
+        x_grid = np.linspace(xlim[0], xlim[1], grid_size)
+        y_grid = np.linspace(ylim[0], ylim[1], grid_size)
+        xx, yy = np.meshgrid(x_grid, y_grid)
+        sample = np.column_stack([xx.ravel(), yy.ravel()])
+
+        kde = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
+        kde.fit(points_2d)
+        log_density = kde.score_samples(sample)
+        density = np.exp(log_density).reshape(grid_size, grid_size)
+        if density.max() > 0:
+            density = density / density.max()
+            density = density ** 0.5
+
+        plt.figure(figsize=(12, 10))
+        plt.imshow(
+            density,
+            extent=(xlim[0], xlim[1], ylim[0], ylim[1]),
+            origin="lower",
+            cmap="inferno",
+            aspect="auto",
+        )
+        plt.title("t-SNE Density (KDE)")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
+        plt.tight_layout()
+        plt.savefig(
+            f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_density_kde.png",
             dpi=200,
         )
         plt.close()
@@ -1332,7 +1566,7 @@ class AttentionTest:
                     "",
                     xy=(end[0], end[1]),
                     xytext=(start[0], start[1]),
-                    arrowprops={"arrowstyle": "->", "linewidth": 0.6, "color": color},
+                    arrowprops={"arrowstyle": "->", "mutation_scale": ARROW_MUTATION_SCALE, "linewidth": 0.6, "color": color},
                 )
 
         plt.title("UMAP of Hidden State Vectors by Completion")
@@ -1446,6 +1680,7 @@ class AttentionTest:
                         xytext=(start[0], start[1]),
                         arrowprops={
                             "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
                             "linewidth": line_width,
                             "color": color,
                             "alpha": alpha,
@@ -1673,7 +1908,8 @@ class AttentionTest:
             completion_steps.append(step_indices)
             completion_edge_flags.append(edge_flags)
 
-        if all_vectors:
+        run_pca = False
+        if run_pca and all_vectors:
             vectors = np.array(all_vectors)
             self.plot_pca_reconstruction_error(vectors, plot_dir=plot_dir, idx=target_layer_idx)
             from sklearn.decomposition import PCA
@@ -1726,14 +1962,18 @@ class AttentionTest:
                 plot_dir=plot_dir,
                 only_newline_tokens=False,
             )
-            self.plot_sequence_umap(
-                hidden_states_tensor,
-                completion_ids,
-                layer_idx,
-                plot_dir=plot_dir,
-                only_newline_tokens=only_newline_tokens,
-            )
-            self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
+            run_umap = False
+            if run_umap:
+                self.plot_sequence_umap(
+                    hidden_states_tensor,
+                    completion_ids,
+                    layer_idx,
+                    plot_dir=plot_dir,
+                    only_newline_tokens=only_newline_tokens,
+                )
+            run_dendrogram = False
+            if run_dendrogram:
+                self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
             self.find_nearest_neighbors(
                 embeddings,
                 prefix_meta,
