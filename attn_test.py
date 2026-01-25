@@ -1257,17 +1257,31 @@ class AttentionTest:
         cmap = plt.get_cmap("tab10")
         colors = [cmap(label % 10) for label in labels]
         plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        crosshair_span = 0.01 * max(xlim[1] - xlim[0], ylim[1] - ylim[0])
         for cluster_id in range(n_clusters):
             idxs = np.where(labels == cluster_id)[0]
             if len(idxs) == 0:
                 continue
-            first_idx = idxs[0]
+            cluster_color = colors[idxs[0]]
+            centroid = points_2d[idxs].mean(axis=0)
+            plt.plot(
+                [centroid[0] - crosshair_span, centroid[0] + crosshair_span],
+                [centroid[1], centroid[1]],
+                color=cluster_color,
+                linewidth=0.8,
+            )
+            plt.plot(
+                [centroid[0], centroid[0]],
+                [centroid[1] - crosshair_span, centroid[1] + crosshair_span],
+                color=cluster_color,
+                linewidth=0.8,
+            )
             plt.annotate(
                 str(cluster_id),
-                xy=(points_2d[first_idx, 0], points_2d[first_idx, 1]),
-                xytext=(3, 3),
+                xy=(centroid[0], centroid[1]),
+                xytext=(crosshair_span * 1.4, crosshair_span * 1.4),
                 textcoords="offset points",
-                color="black",
+                color=cluster_color,
                 fontsize=8,
                 fontweight="bold",
             )
@@ -1367,17 +1381,31 @@ class AttentionTest:
         # Cluster plot without edge components
         plt.figure(figsize=(12, 10))
         plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        crosshair_span = 0.01 * max(xlim[1] - xlim[0], ylim[1] - ylim[0])
         for cluster_id in range(n_clusters):
             idxs = np.where(labels == cluster_id)[0]
             if len(idxs) == 0:
                 continue
-            first_idx = idxs[0]
+            cluster_color = colors[idxs[0]]
+            centroid = points_2d[idxs].mean(axis=0)
+            plt.plot(
+                [centroid[0] - crosshair_span, centroid[0] + crosshair_span],
+                [centroid[1], centroid[1]],
+                color=cluster_color,
+                linewidth=0.8,
+            )
+            plt.plot(
+                [centroid[0], centroid[0]],
+                [centroid[1] - crosshair_span, centroid[1] + crosshair_span],
+                color=cluster_color,
+                linewidth=0.8,
+            )
             plt.annotate(
                 str(cluster_id),
-                xy=(points_2d[first_idx, 0], points_2d[first_idx, 1]),
-                xytext=(3, 3),
+                xy=(centroid[0], centroid[1]),
+                xytext=(crosshair_span * 1.4, crosshair_span * 1.4),
                 textcoords="offset points",
-                color="black",
+                color=cluster_color,
                 fontsize=8,
                 fontweight="bold",
             )
