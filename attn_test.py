@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import dendrogram, linkage
+from matplotlib.patches import Circle
 
 import datetime
 import os
@@ -640,6 +641,14 @@ class AttentionTest:
             n_sequences=n_completions,
         )
 
+        self.plot_tsne_density(
+            points_2d,
+            plot_dir=plot_dir,
+            idx=idx,
+            xlim=xlim,
+            ylim=ylim,
+        )
+
         # Edge-only plot
         plt.figure(figsize=(12, 10))
         for completion_idx, step_indices in enumerate(completion_steps):
@@ -1258,12 +1267,27 @@ class AttentionTest:
         colors = [cmap(label % 10) for label in labels]
         plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
         crosshair_span = 0.01 * max(xlim[1] - xlim[0], ylim[1] - ylim[0])
+        min_radius = crosshair_span * 0.8
+        ax = plt.gca()
         for cluster_id in range(n_clusters):
             idxs = np.where(labels == cluster_id)[0]
             if len(idxs) == 0:
                 continue
             cluster_color = colors[idxs[0]]
             centroid = points_2d[idxs].mean(axis=0)
+            diffs = points_2d[idxs] - centroid
+            radius = float(np.sqrt(np.mean(np.sum(diffs ** 2, axis=1))))
+            radius = max(radius, min_radius)
+            ax.add_patch(
+                Circle(
+                    (centroid[0], centroid[1]),
+                    radius=radius,
+                    fill=False,
+                    edgecolor=cluster_color,
+                    linewidth=0.8,
+                    alpha=0.8,
+                )
+            )
             plt.plot(
                 [centroid[0] - crosshair_span, centroid[0] + crosshair_span],
                 [centroid[1], centroid[1]],
@@ -1382,12 +1406,27 @@ class AttentionTest:
         plt.figure(figsize=(12, 10))
         plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
         crosshair_span = 0.01 * max(xlim[1] - xlim[0], ylim[1] - ylim[0])
+        min_radius = crosshair_span * 0.8
+        ax = plt.gca()
         for cluster_id in range(n_clusters):
             idxs = np.where(labels == cluster_id)[0]
             if len(idxs) == 0:
                 continue
             cluster_color = colors[idxs[0]]
             centroid = points_2d[idxs].mean(axis=0)
+            diffs = points_2d[idxs] - centroid
+            radius = float(np.sqrt(np.mean(np.sum(diffs ** 2, axis=1))))
+            radius = max(radius, min_radius)
+            ax.add_patch(
+                Circle(
+                    (centroid[0], centroid[1]),
+                    radius=radius,
+                    fill=False,
+                    edgecolor=cluster_color,
+                    linewidth=0.8,
+                    alpha=0.8,
+                )
+            )
             plt.plot(
                 [centroid[0] - crosshair_span, centroid[0] + crosshair_span],
                 [centroid[1], centroid[1]],
@@ -1936,7 +1975,7 @@ class AttentionTest:
             completion_steps.append(step_indices)
             completion_edge_flags.append(edge_flags)
 
-        run_pca = False
+        run_pca = True
         if run_pca and all_vectors:
             vectors = np.array(all_vectors)
             self.plot_pca_reconstruction_error(vectors, plot_dir=plot_dir, idx=target_layer_idx)
@@ -1990,7 +2029,7 @@ class AttentionTest:
                 plot_dir=plot_dir,
                 only_newline_tokens=False,
             )
-            run_umap = False
+            run_umap = True
             if run_umap:
                 self.plot_sequence_umap(
                     hidden_states_tensor,
@@ -1999,7 +2038,7 @@ class AttentionTest:
                     plot_dir=plot_dir,
                     only_newline_tokens=only_newline_tokens,
                 )
-            run_dendrogram = False
+            run_dendrogram = True
             if run_dendrogram:
                 self.cluster_embeddings(embeddings, n_clusters=5, idx=layer_idx, plot_dir=plot_dir, metric=metric)
             self.find_nearest_neighbors(
