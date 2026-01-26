@@ -44,6 +44,7 @@ class AttentionTest:
         self.model.eval()
         self.model.set_attn_implementation("eager")
         self.device = next(self.model.parameters()).device
+        print(f"Using device: {self.device}")
 
     def get_last_n_tokens_str(self, prefix: tuple, n: int) -> str:
         last_n_tokens = prefix[-n:]
@@ -1008,7 +1009,10 @@ class AttentionTest:
         self,
         points_2d: np.ndarray,
         completion_steps: list[list[int]],
+        completion_token_steps: list[list[int]],
         completion_edge_flags: list[list[bool]],
+        completion_ids: torch.Tensor,
+        vectors: np.ndarray,
         plot_dir: str,
         idx: int,
     ):
@@ -1145,6 +1149,598 @@ class AttentionTest:
         plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}.png", dpi=200)
         plt.close()
 
+        x_min, x_max = points_2d[:, 0].min(), points_2d[:, 0].max()
+        y_min, y_max = points_2d[:, 1].min(), points_2d[:, 1].max()
+        x_pad = (x_max - x_min) * 0.05
+        y_pad = (y_max - y_min) * 0.05
+        xlim = (x_min - x_pad, x_max + x_pad)
+        ylim = (y_min - y_pad, y_max + y_pad)
+
+        # Angle-colored arrows plot
+        plt.figure(figsize=(12, 10))
+        arrow_cmap = plt.get_cmap("hsv")
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            if len(edge_coords):
+                plt.scatter(
+                    edge_coords[:, 0],
+                    edge_coords[:, 1],
+                    s=28,
+                    color=color,
+                    label=None,
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                hue = (angle + np.pi) / (2 * np.pi)
+                arrow_color = arrow_cmap(hue)
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": arrow_color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(edge_plot_indices) > 1:
+                edge_coords = coords[edge_plot_indices]
+                for i in range(len(edge_coords) - 1):
+                    start = edge_coords[i]
+                    end = edge_coords[i + 1]
+                    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                    hue = (angle + np.pi) / (2 * np.pi)
+                    arrow_color = arrow_cmap(hue)
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 1.6,
+                            "color": arrow_color,
+                            "linestyle": "-",
+                        },
+                    )
+            edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+            if edge_only and len(coords) > 1:
+                first_edge = edge_only[0]
+                last_edge = edge_only[-1]
+                if first_edge != 0:
+                    start = coords[0]
+                    end = coords[first_edge]
+                    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                    hue = (angle + np.pi) / (2 * np.pi)
+                    arrow_color = arrow_cmap(hue)
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 1.6,
+                            "color": arrow_color,
+                            "linestyle": "-",
+                        },
+                    )
+                if last_edge != len(coords) - 1:
+                    start = coords[last_edge]
+                    end = coords[len(coords) - 1]
+                    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                    hue = (angle + np.pi) / (2 * np.pi)
+                    arrow_color = arrow_cmap(hue)
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 1.6,
+                            "color": arrow_color,
+                            "linestyle": "-",
+                        },
+                    )
+        plt.title("PCA with Arrows Colored by Angle")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_angle.png", dpi=200)
+        plt.close()
+
+        # Angle-colored arrows plot without edge components
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            if len(edge_coords):
+                plt.scatter(
+                    edge_coords[:, 0],
+                    edge_coords[:, 1],
+                    s=28,
+                    color=color,
+                    label=None,
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                angle = np.arctan2(end[1] - start[1], end[0] - start[0])
+                hue = (angle + np.pi) / (2 * np.pi)
+                arrow_color = arrow_cmap(hue)
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": arrow_color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("PCA with Arrows Colored by Angle (No Edge Components)")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_angle_no_edges.png", dpi=200)
+        plt.close()
+
+        self.plot_sequence_pca_gradient(
+            points_2d,
+            completion_steps,
+            plot_dir=plot_dir,
+            idx=idx,
+        )
+
+        self.plot_pca_clusters(
+            points_2d,
+            vectors,
+            completion_steps,
+            completion_edge_flags,
+            plot_dir=plot_dir,
+            idx=idx,
+            xlim=xlim,
+            ylim=ylim,
+            n_sequences=len(completion_steps),
+        )
+
+        self.plot_pca_density(
+            points_2d,
+            plot_dir=plot_dir,
+            idx=idx,
+            xlim=xlim,
+            ylim=ylim,
+        )
+
+        # Edge-only plot
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            if not edge_plot_indices:
+                continue
+            edge_coords = coords[edge_plot_indices]
+            plt.scatter(
+                edge_coords[:, 0],
+                edge_coords[:, 1],
+                s=28,
+                color=color,
+                label=f"c{completion_idx}",
+            )
+            for i in range(len(edge_coords) - 1):
+                start = edge_coords[i]
+                end = edge_coords[i + 1]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 1.6,
+                        "color": color,
+                        "linestyle": "-",
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("PCA Edge-Only by Completion")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_edge_only.png", dpi=200)
+        plt.close()
+
+        # Non-edge-only plot
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            color = colors[completion_idx % len(colors)]
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            non_edge_coords = coords[
+                [i for i in range(len(coords)) if i not in edge_plot_indices]
+            ]
+            if len(non_edge_coords):
+                plt.scatter(
+                    non_edge_coords[:, 0],
+                    non_edge_coords[:, 1],
+                    s=12,
+                    facecolors="none",
+                    edgecolors=color,
+                    label=f"c{completion_idx}",
+                )
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=9,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("PCA Without Edge Components")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.tight_layout()
+        plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_no_edges.png", dpi=200)
+        plt.close()
+
+        self.plot_pca_density_kde(
+            points_2d,
+            plot_dir=plot_dir,
+            idx=idx,
+            xlim=xlim,
+            ylim=ylim,
+        )
+
+        focus_dir = f"{plot_dir}/pca_sequences_focus"
+        os.makedirs(focus_dir, exist_ok=True)
+        for focus_idx in range(len(completion_steps)):
+            plt.figure(figsize=(12, 10))
+            for completion_idx, step_indices in enumerate(completion_steps):
+                if not step_indices:
+                    continue
+                color = colors[completion_idx % len(colors)]
+                coords = points_2d[step_indices]
+                is_focus = completion_idx == focus_idx
+                alpha = 1.0 if is_focus else 0.15
+                line_width = 0.8 if is_focus else 0.4
+                point_size = 14 if is_focus else 10
+                edge_flags = completion_edge_flags[completion_idx]
+                edge_plot_indices = [
+                    i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+                ]
+                if len(coords):
+                    edge_plot_indices.extend([0, len(coords) - 1])
+                edge_plot_indices = sorted(set(edge_plot_indices))
+                edge_coords = coords[edge_plot_indices] if edge_plot_indices else np.array([])
+                non_edge_coords = coords[
+                    [i for i in range(len(coords)) if i not in edge_plot_indices]
+                ]
+                if len(non_edge_coords):
+                    plt.scatter(
+                        non_edge_coords[:, 0],
+                        non_edge_coords[:, 1],
+                        s=point_size,
+                        facecolors="none",
+                        edgecolors=color,
+                        alpha=alpha,
+                        label=f"c{completion_idx}",
+                    )
+                if len(edge_coords):
+                    plt.scatter(
+                        edge_coords[:, 0],
+                        edge_coords[:, 1],
+                        s=point_size + 10,
+                        color=color,
+                        alpha=alpha,
+                        label=None,
+                    )
+                for i in range(1, len(coords)):
+                    start = coords[i - 1]
+                    end = coords[i]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 0.8,
+                            "color": color,
+                            "alpha": alpha,
+                            "linestyle": (0, (1, 3)),
+                        },
+                    )
+                if is_focus:
+                    plt.annotate(
+                        str(completion_idx),
+                        xy=(coords[0, 0], coords[0, 1]),
+                        xytext=(3, 3),
+                        textcoords="offset points",
+                        color="black",
+                        fontsize=9,
+                        fontweight="bold",
+                    )
+                    plt.annotate(
+                        str(completion_idx),
+                        xy=(coords[-1, 0], coords[-1, 1]),
+                        xytext=(3, 3),
+                        textcoords="offset points",
+                        color="black",
+                        fontsize=9,
+                        fontweight="bold",
+                        bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+                    )
+                    for point_idx in range(len(coords)):
+                        plt.annotate(
+                            str(point_idx),
+                            xy=(coords[point_idx, 0], coords[point_idx, 1]),
+                            xytext=(0, -7),
+                            textcoords="offset points",
+                            fontsize=5,
+                            color="black",
+                            ha="center",
+                            va="top",
+                        )
+                    for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
+                        step_idx = completion_token_steps[completion_idx][local_idx]
+                        token_text = self.tokenizer.decode(
+                            [completion_ids[completion_idx, step_idx].item()],
+                            skip_special_tokens=False,
+                        )
+                        prefix_ids = tuple(
+                            completion_ids[completion_idx, : step_idx + 1].tolist()
+                        )
+                        is_edge = edge_flags[local_idx] if local_idx < len(edge_flags) else False
+                        prefix_text, token_text = self.format_prefix_line_and_token(prefix_ids)
+                        if not is_edge:
+                            prefix_text = ""
+                        fontsize = 6
+                        fontfamily = "monospace"
+                        prefix_width = self.monospace_width_points(prefix_text, fontsize)
+                        token_width = self.monospace_width_points(token_text, fontsize)
+                        total_width = prefix_width + token_width
+                        prefix_offset = (-total_width / 2, 6)
+                        token_offset = (-total_width / 2 + prefix_width, 6)
+                        if prefix_text:
+                            plt.annotate(
+                                prefix_text,
+                                xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
+                                xytext=prefix_offset,
+                                textcoords="offset points",
+                                fontsize=fontsize,
+                                fontfamily=fontfamily,
+                                color="black",
+                                ha="left",
+                                va="bottom",
+                            )
+                        plt.annotate(
+                            token_text,
+                            xy=(coords[local_idx + 1, 0], coords[local_idx + 1, 1]),
+                            xytext=token_offset,
+                            textcoords="offset points",
+                            fontsize=fontsize,
+                            fontfamily=fontfamily,
+                            color="tab:red",
+                            ha="left",
+                            va="bottom",
+                        )
+                edge_plot_indices = [
+                    i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+                ]
+                if len(edge_plot_indices) > 1:
+                    edge_coords = coords[edge_plot_indices]
+                    for i in range(len(edge_coords) - 1):
+                        start = edge_coords[i]
+                        end = edge_coords[i + 1]
+                        plt.annotate(
+                            "",
+                            xy=(end[0], end[1]),
+                            xytext=(start[0], start[1]),
+                            arrowprops={
+                                "arrowstyle": "->",
+                                "mutation_scale": ARROW_MUTATION_SCALE,
+                                "linewidth": line_width + 0.9,
+                                "color": color,
+                                "alpha": alpha,
+                                "linestyle": "-",
+                            },
+                        )
+                edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+                if edge_only and len(coords) > 1:
+                    first_edge = edge_only[0]
+                    last_edge = edge_only[-1]
+                    if first_edge != 0:
+                        plt.annotate(
+                            "",
+                            xy=(coords[first_edge][0], coords[first_edge][1]),
+                            xytext=(coords[0][0], coords[0][1]),
+                            arrowprops={
+                                "arrowstyle": "->",
+                                "mutation_scale": ARROW_MUTATION_SCALE,
+                                "linewidth": line_width + 0.9,
+                                "color": color,
+                                "alpha": alpha,
+                                "linestyle": "-",
+                            },
+                        )
+                    if last_edge != len(coords) - 1:
+                        plt.annotate(
+                            "",
+                            xy=(coords[len(coords) - 1][0], coords[len(coords) - 1][1]),
+                            xytext=(coords[last_edge][0], coords[last_edge][1]),
+                            arrowprops={
+                                "arrowstyle": "->",
+                                "mutation_scale": ARROW_MUTATION_SCALE,
+                                "linewidth": line_width + 0.9,
+                                "color": color,
+                                "alpha": alpha,
+                                "linestyle": "-",
+                            },
+                        )
+
+            plt.title(f"PCA by Completion (focus c{focus_idx})")
+            plt.xlabel("Component 1")
+            plt.ylabel("Component 2")
+            plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+            set_equal_aspect()
+            plt.tight_layout()
+            plt.savefig(
+                f"{focus_dir}/hidden_states_pca_layer_{idx}_focus_c{focus_idx}.png",
+                dpi=200,
+            )
+            plt.close()
+
     def plot_pca_reconstruction_error(self, vectors: np.ndarray, plot_dir: str, idx: int):
         from sklearn.decomposition import PCA
         max_components = min(vectors.shape[0], vectors.shape[1])
@@ -1186,6 +1782,389 @@ class AttentionTest:
         plt.ylabel("Cumulative Explained Variance Ratio")
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/pca/explained_variance_layer_{idx}.png", dpi=200)
+        plt.close()
+
+    def plot_sequence_pca_gradient(
+        self,
+        points_2d: np.ndarray,
+        completion_steps: list[list[int]],
+        plot_dir: str,
+        idx: int,
+        cmap_name: str = "hsv",
+    ):
+        os.makedirs(f"{plot_dir}/pca_sequences_gradient", exist_ok=True)
+        cmap = plt.get_cmap(cmap_name)
+        plt.figure(figsize=(12, 10))
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if len(step_indices) < 2:
+                continue
+            coords = points_2d[step_indices]
+            n_steps = len(coords)
+            for i in range(1, n_steps):
+                start = coords[i - 1]
+                end = coords[i]
+                color = cmap(i / (n_steps - 1))
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.6,
+                        "color": color,
+                    },
+                )
+            plt.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                s=8,
+                color=[cmap(i / (n_steps - 1)) for i in range(n_steps)],
+            )
+            plt.annotate(
+                "0",
+                xy=(coords[0, 0], coords[0, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=8,
+                fontweight="bold",
+            )
+            plt.annotate(
+                str(completion_idx),
+                xy=(coords[-1, 0], coords[-1, 1]),
+                xytext=(3, 3),
+                textcoords="offset points",
+                color="black",
+                fontsize=8,
+                fontweight="bold",
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "black", "linewidth": 0.6},
+            )
+        plt.title("PCA with Position Gradient")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        set_equal_aspect()
+        plt.tight_layout()
+        os.makedirs(f"{plot_dir}/pca_sequences", exist_ok=True)
+        plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_gradient.png", dpi=200)
+        plt.close()
+
+    def plot_pca_clusters(
+        self,
+        points_2d: np.ndarray,
+        vectors: np.ndarray,
+        completion_steps: list[list[int]],
+        completion_edge_flags: list[list[bool]],
+        plot_dir: str,
+        idx: int,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        n_sequences: int,
+    ):
+        from sklearn.cluster import AgglomerativeClustering
+
+        n_clusters = max(2, int(round(len(vectors) / max(n_sequences, 1))) * 2)
+        if len(vectors) < n_clusters:
+            return
+
+        clustering = AgglomerativeClustering(
+            n_clusters=n_clusters,
+            metric="cosine",
+            linkage="average",
+        )
+        labels = clustering.fit_predict(vectors)
+
+        plt.figure(figsize=(12, 10))
+        cmap = plt.get_cmap("tab10")
+        colors = [cmap(label % 10) for label in labels]
+        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        crosshair_span = 0.01 * max(xlim[1] - xlim[0], ylim[1] - ylim[0])
+        min_radius = crosshair_span * 0.8
+        ax = plt.gca()
+        for cluster_id in range(n_clusters):
+            idxs = np.where(labels == cluster_id)[0]
+            if len(idxs) == 0:
+                continue
+            cluster_color = colors[idxs[0]]
+            centroid = points_2d[idxs].mean(axis=0)
+            diffs = points_2d[idxs] - centroid
+            radius = float(np.sqrt(np.mean(np.sum(diffs ** 2, axis=1))))
+            radius = max(radius, min_radius)
+            ax.add_patch(
+                Circle(
+                    (centroid[0], centroid[1]),
+                    radius=radius,
+                    fill=False,
+                    edgecolor=cluster_color,
+                    linewidth=0.8,
+                    alpha=0.8,
+                )
+            )
+            plt.plot(
+                [centroid[0] - crosshair_span, centroid[0] + crosshair_span],
+                [centroid[1], centroid[1]],
+                color=cluster_color,
+                linewidth=0.8,
+            )
+            plt.plot(
+                [centroid[0], centroid[0]],
+                [centroid[1] - crosshair_span, centroid[1] + crosshair_span],
+                color=cluster_color,
+                linewidth=0.8,
+            )
+            plt.annotate(
+                str(cluster_id),
+                xy=(centroid[0], centroid[1]),
+                xytext=(crosshair_span * 1.4, crosshair_span * 1.4),
+                textcoords="offset points",
+                color=cluster_color,
+                fontsize=8,
+                fontweight="bold",
+            )
+
+        # Draw arrows per sequence with cluster-based coloring.
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            coords = points_2d[step_indices]
+            edge_flags = completion_edge_flags[completion_idx]
+            edge_plot_indices = [
+                i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge
+            ]
+            if len(coords):
+                edge_plot_indices.extend([0, len(coords) - 1])
+            edge_plot_indices = sorted(set(edge_plot_indices))
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                color = colors[step_indices[i]]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+            if len(edge_plot_indices) > 1:
+                edge_coords = coords[edge_plot_indices]
+                for i in range(len(edge_coords) - 1):
+                    start = edge_coords[i]
+                    end = edge_coords[i + 1]
+                    color = colors[step_indices[edge_plot_indices[i + 1]]]
+                    plt.annotate(
+                        "",
+                        xy=(end[0], end[1]),
+                        xytext=(start[0], start[1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+            edge_only = [i + 1 for i, is_edge in enumerate(edge_flags[:-1]) if is_edge]
+            if edge_only and len(coords) > 1:
+                first_edge = edge_only[0]
+                last_edge = edge_only[-1]
+                if first_edge != 0:
+                    color = colors[step_indices[first_edge]]
+                    plt.annotate(
+                        "",
+                        xy=(coords[first_edge][0], coords[first_edge][1]),
+                        xytext=(coords[0][0], coords[0][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+                if last_edge != len(coords) - 1:
+                    color = colors[step_indices[-1]]
+                    plt.annotate(
+                        "",
+                        xy=(coords[-1][0], coords[-1][1]),
+                        xytext=(coords[last_edge][0], coords[last_edge][1]),
+                        arrowprops={
+                            "arrowstyle": "->",
+                            "mutation_scale": ARROW_MUTATION_SCALE,
+                            "linewidth": 1.6,
+                            "color": color,
+                            "linestyle": "-",
+                        },
+                    )
+
+        plt.title(f"PCA Colored by Clusters (k={n_clusters}, target size≈{n_sequences})")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.tight_layout()
+        os.makedirs(f"{plot_dir}/pca_sequences", exist_ok=True)
+        plt.savefig(
+            f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_clusters.png",
+            dpi=200,
+        )
+        plt.close()
+
+        # Cluster plot without edge components
+        plt.figure(figsize=(12, 10))
+        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=12, c=colors)
+        crosshair_span = 0.01 * max(xlim[1] - xlim[0], ylim[1] - ylim[0])
+        min_radius = crosshair_span * 0.8
+        ax = plt.gca()
+        for cluster_id in range(n_clusters):
+            idxs = np.where(labels == cluster_id)[0]
+            if len(idxs) == 0:
+                continue
+            cluster_color = colors[idxs[0]]
+            centroid = points_2d[idxs].mean(axis=0)
+            diffs = points_2d[idxs] - centroid
+            radius = float(np.sqrt(np.mean(np.sum(diffs ** 2, axis=1))))
+            radius = max(radius, min_radius)
+            ax.add_patch(
+                Circle(
+                    (centroid[0], centroid[1]),
+                    radius=radius,
+                    fill=False,
+                    edgecolor=cluster_color,
+                    linewidth=0.8,
+                    alpha=0.8,
+                )
+            )
+            plt.plot(
+                [centroid[0] - crosshair_span, centroid[0] + crosshair_span],
+                [centroid[1], centroid[1]],
+                color=cluster_color,
+                linewidth=0.8,
+            )
+            plt.plot(
+                [centroid[0], centroid[0]],
+                [centroid[1] - crosshair_span, centroid[1] + crosshair_span],
+                color=cluster_color,
+                linewidth=0.8,
+            )
+            plt.annotate(
+                str(cluster_id),
+                xy=(centroid[0], centroid[1]),
+                xytext=(crosshair_span * 1.4, crosshair_span * 1.4),
+                textcoords="offset points",
+                color=cluster_color,
+                fontsize=8,
+                fontweight="bold",
+            )
+
+        for completion_idx, step_indices in enumerate(completion_steps):
+            if not step_indices:
+                continue
+            coords = points_2d[step_indices]
+            for i in range(1, len(coords)):
+                start = coords[i - 1]
+                end = coords[i]
+                color = colors[step_indices[i]]
+                plt.annotate(
+                    "",
+                    xy=(end[0], end[1]),
+                    xytext=(start[0], start[1]),
+                    arrowprops={
+                        "arrowstyle": "->",
+                        "mutation_scale": ARROW_MUTATION_SCALE,
+                        "linewidth": 0.8,
+                        "color": color,
+                        "linestyle": (0, (1, 3)),
+                    },
+                )
+
+        plt.title(f"PCA Colored by Clusters (k={n_clusters}, target size≈{n_sequences}) (No Edge Components)")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.tight_layout()
+        os.makedirs(f"{plot_dir}/pca_sequences", exist_ok=True)
+        plt.savefig(
+            f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_clusters_no_edges.png",
+            dpi=200,
+        )
+        plt.close()
+
+    def plot_pca_density(
+        self,
+        points_2d: np.ndarray,
+        plot_dir: str,
+        idx: int,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        bins: int = 150,
+    ):
+        os.makedirs(f"{plot_dir}/pca_sequences", exist_ok=True)
+        plt.figure(figsize=(12, 10))
+        plt.hist2d(points_2d[:, 0], points_2d[:, 1], bins=bins, cmap="inferno")
+        plt.title("PCA Density (All Points)")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
+        set_equal_aspect()
+        plt.tight_layout()
+        plt.savefig(
+            f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_density.png",
+            dpi=200,
+        )
+        plt.close()
+
+    def plot_pca_density_kde(
+        self,
+        points_2d: np.ndarray,
+        plot_dir: str,
+        idx: int,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        grid_size: int = 800,
+        bandwidth: float = 0.5,
+    ):
+        from sklearn.neighbors import KernelDensity
+
+        os.makedirs(f"{plot_dir}/pca_sequences", exist_ok=True)
+        x_grid = np.linspace(xlim[0], xlim[1], grid_size)
+        y_grid = np.linspace(ylim[0], ylim[1], grid_size)
+        xx, yy = np.meshgrid(x_grid, y_grid)
+        sample = np.column_stack([xx.ravel(), yy.ravel()])
+
+        kde = KernelDensity(kernel="gaussian", bandwidth=bandwidth)
+        kde.fit(points_2d)
+        log_density = kde.score_samples(sample)
+        density = np.exp(log_density).reshape(grid_size, grid_size)
+        if density.max() > 0:
+            density = density / density.max()
+            density = density ** 0.5
+
+        plt.figure(figsize=(12, 10))
+        plt.imshow(
+            density,
+            extent=(xlim[0], xlim[1], ylim[0], ylim[1]),
+            origin="lower",
+            cmap="inferno",
+            aspect="auto",
+        )
+        plt.title("PCA Density (KDE)")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        set_equal_aspect()
+        plt.tight_layout()
+        plt.savefig(
+            f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}_density_kde.png",
+            dpi=200,
+        )
         plt.close()
 
     def plot_sequence_tsne_gradient(
@@ -1987,9 +2966,11 @@ class AttentionTest:
         # PCA analysis using all tokens at target layer
         all_vectors = []
         completion_steps = []
+        completion_token_steps = []
         completion_edge_flags = []
         for completion_idx in range(n_completions):
             step_indices = []
+            token_steps = []
             edge_flags = []
             for step_idx in range(max_generated_length):
                 token_id = completion_ids[completion_idx, step_idx].item()
@@ -1997,10 +2978,12 @@ class AttentionTest:
                     break
                 vector = hidden_states_tensor[completion_idx, step_idx, target_layer_idx, :].cpu().numpy()
                 step_indices.append(len(all_vectors))
+                token_steps.append(step_idx)
                 token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
                 edge_flags.append("\n" in token_text)
                 all_vectors.append(vector)
             completion_steps.append(step_indices)
+            completion_token_steps.append(token_steps)
             completion_edge_flags.append(edge_flags)
 
         run_pca = True
@@ -2013,7 +2996,10 @@ class AttentionTest:
             self.plot_sequence_pca(
                 points_2d,
                 completion_steps,
+                completion_token_steps,
                 completion_edge_flags,
+                completion_ids,
+                vectors,
                 plot_dir=plot_dir,
                 idx=target_layer_idx,
             )
