@@ -30,6 +30,10 @@ ARROW_MUTATION_SCALE = 14
 def timestamp():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+def set_equal_aspect():
+    ax = plt.gca()
+    ax.set_aspect("equal", adjustable="box")
+
 class AttentionTest:
     def __init__(self, model_id):
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -205,6 +209,7 @@ class AttentionTest:
         plt.title("t-SNE of Hidden State Vectors")
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
+        set_equal_aspect()
         # make sure the plot directory exists
         os.makedirs(f"{plot_dir}/tsne", exist_ok=True)
         plt.savefig(f"{plot_dir}/tsne/hidden_states_layer_{idx}.png", dpi=200)
@@ -390,6 +395,7 @@ class AttentionTest:
         ylim = (y_min - y_pad, y_max + y_pad)
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}.png", dpi=200)
         plt.close()
@@ -535,6 +541,7 @@ class AttentionTest:
         plt.ylabel("Dimension 2")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_angle.png", dpi=200)
@@ -617,6 +624,7 @@ class AttentionTest:
         plt.ylabel("Dimension 2")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_angle_no_edges.png", dpi=200)
@@ -713,6 +721,7 @@ class AttentionTest:
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_edge_only.png", dpi=200)
         plt.close()
@@ -783,6 +792,7 @@ class AttentionTest:
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_no_edges.png", dpi=200)
         plt.close()
@@ -894,7 +904,10 @@ class AttentionTest:
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
+                        is_edge = edge_flags[local_idx] if local_idx < len(edge_flags) else False
                         prefix_text, token_text = self.format_prefix_line_and_token(prefix_ids)
+                        if not is_edge:
+                            prefix_text = ""
                         fontsize = 6
                         fontfamily = "monospace"
                         prefix_width = self.monospace_width_points(prefix_text, fontsize)
@@ -983,6 +996,7 @@ class AttentionTest:
             plt.xlabel("Dimension 1")
             plt.ylabel("Dimension 2")
             plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+            set_equal_aspect()
             plt.tight_layout()
             plt.savefig(
                 f"{focus_dir}/hidden_states_tsne_layer_{idx}_focus_c{focus_idx}.png",
@@ -1126,6 +1140,7 @@ class AttentionTest:
         plt.xlabel("Component 1")
         plt.ylabel("Component 2")
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/pca_sequences/hidden_states_pca_layer_{idx}.png", dpi=200)
         plt.close()
@@ -1232,6 +1247,7 @@ class AttentionTest:
         plt.title("t-SNE with Position Gradient")
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
+        set_equal_aspect()
         plt.tight_layout()
         os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
         plt.savefig(f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_gradient.png", dpi=200)
@@ -1394,6 +1410,7 @@ class AttentionTest:
         plt.ylabel("Dimension 2")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.tight_layout()
         os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
         plt.savefig(
@@ -1475,6 +1492,7 @@ class AttentionTest:
         plt.ylabel("Dimension 2")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.tight_layout()
         os.makedirs(f"{plot_dir}/tsne_sequences", exist_ok=True)
         plt.savefig(
@@ -1500,6 +1518,7 @@ class AttentionTest:
         plt.ylabel("Dimension 2")
         plt.xlim(*xlim)
         plt.ylim(*ylim)
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(
             f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_density.png",
@@ -1544,6 +1563,7 @@ class AttentionTest:
         plt.title("t-SNE Density (KDE)")
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(
             f"{plot_dir}/tsne_sequences/hidden_states_tsne_layer_{idx}_density_kde.png",
@@ -1572,23 +1592,27 @@ class AttentionTest:
         points = []
         completion_steps = []
         completion_token_steps = []
+        completion_edge_flags = []
         for completion_idx in range(n_completions):
             step_indices = []
             token_steps = []
+            edge_flags = []
             for step_idx in range(max_generated_length):
                 token_id = completion_ids[completion_idx, step_idx].item()
                 if eos_token_id is not None and token_id == eos_token_id:
                     break
-                if only_newline_tokens:
-                    token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
-                    if "\n" not in token_text:
-                        continue
+                token_text = self.tokenizer.decode([token_id], skip_special_tokens=False)
+                is_edge = "\n" in token_text
+                if only_newline_tokens and not is_edge:
+                    continue
                 vector = hidden_states_tensor[completion_idx, step_idx, idx, :].cpu().numpy()
                 step_indices.append(len(points))
                 token_steps.append(step_idx)
+                edge_flags.append(is_edge)
                 points.append(vector)
             completion_steps.append(step_indices)
             completion_token_steps.append(token_steps)
+            completion_edge_flags.append(edge_flags)
 
         if not points:
             return
@@ -1640,6 +1664,7 @@ class AttentionTest:
         plt.xlabel("Dimension 1")
         plt.ylabel("Dimension 2")
         plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+        set_equal_aspect()
         plt.tight_layout()
         plt.savefig(f"{plot_dir}/umap_sequences/hidden_states_umap_layer_{idx}.png", dpi=200)
         plt.close()
@@ -1696,18 +1721,20 @@ class AttentionTest:
                             ha="center",
                             va="top",
                         )
+                    edge_flags = completion_edge_flags[completion_idx]
                     for local_idx in range(len(completion_token_steps[completion_idx]) - 1):
                         step_idx = completion_token_steps[completion_idx][local_idx]
                         token_text = self.tokenizer.decode(
                             [completion_ids[completion_idx, step_idx].item()],
                             skip_special_tokens=False,
                         )
-                        if "\n" not in token_text:
-                            continue
+                        is_edge = edge_flags[local_idx] if local_idx < len(edge_flags) else False
                         prefix_ids = tuple(
                             completion_ids[completion_idx, : step_idx + 1].tolist()
                         )
                         prefix_text, token_text = self.format_prefix_line_and_token(prefix_ids)
+                        if not is_edge:
+                            prefix_text = ""
                         fontsize = 6
                         fontfamily = "monospace"
                         prefix_width = self.monospace_width_points(prefix_text, fontsize)
@@ -1758,6 +1785,7 @@ class AttentionTest:
             plt.xlabel("Dimension 1")
             plt.ylabel("Dimension 2")
             plt.legend(title="Completion", ncol=2, fontsize=7, title_fontsize=8, loc="best")
+            set_equal_aspect()
             plt.tight_layout()
             plt.savefig(
                 f"{focus_dir}/hidden_states_umap_layer_{idx}_focus_c{focus_idx}.png",
