@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import torch
 from torch import Tensor
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -115,6 +116,58 @@ class LM:
         last_token_states = [h[0, -1, :] for h in hidden_states]
         return torch.stack(last_token_states, dim=0)
 
+    def _middle_layer_index(self) -> int:
+        """
+        Return the hidden_states index for the middle transformer layer.
+
+        Note: hidden_states[0] is the embedding output, so we offset by +1.
+        """
+        num_layers = int(self.model.config.num_hidden_layers)
+        return (num_layers // 2) + 1
+
+    @torch.no_grad()
+    def embed_text(self, text: str) -> Tensor:
+        """
+        Embed text using the hidden state at the middle transformer layer.
+
+        Returns:
+            Tensor of shape (d_model,) for the last token in the prompt.
+        """
+        prompt = self.tokenize(text)
+        layer_index = self._middle_layer_index()
+        return self.get_hidden_state(layer_index, prompt)
+
+    @torch.no_grad()
+    def angular_distance(self, s: str, t: str) -> float:
+        """
+        Angular distance between embeddings of s and t.
+
+        Returns:
+            Normalized angular distance in [0, 1].
+        """
+        emb_s = self.embed_text(s)
+        emb_t = self.embed_text(t)
+        cos_sim = torch.nn.functional.cosine_similarity(
+            emb_s.unsqueeze(0), emb_t.unsqueeze(0), dim=1
+        )
+        cos_sim = torch.clamp(cos_sim, -1.0, 1.0)
+        return torch.acos(cos_sim).item() /  np.pi
+
+    @torch.no_grad()
+    def cosine_similarity(self, s: str, t: str) -> float:
+        """
+        Cosine similarity between embeddings of s and t.
+
+        Returns:
+            Cosine similarity in [-1, 1].
+        """
+        emb_s = self.embed_text(s)
+        emb_t = self.embed_text(t)
+        cos_sim = torch.nn.functional.cosine_similarity(
+            emb_s.unsqueeze(0), emb_t.unsqueeze(0), dim=1
+        )
+        return cos_sim.item()
+
 
 def _main() -> None:
     model_id = "Qwen/Qwen2.5-Coder-0.5B"
@@ -140,6 +193,16 @@ def _main() -> None:
     print(f"Last state shape: {tuple(last_state.shape)}")
     print(f"All prefixes shape: {tuple(all_prefix_states.shape)}")
     print(f"All layers shape: {tuple(all_layer_states.shape)}")
+
+    # s = "add two numbers"
+    # t = "sum of two integers"
+    # u = "sort a list in place"
+
+    s, t, u = "hi", "hello", "goodbye"
+    print(f"Angular distance(s, t): {lm.angular_distance(s, t):.4f}")
+    print(f"Angular distance(s, u): {lm.angular_distance(s, u):.4f}")
+    print(f"Cosine similarity(s, t): {lm.cosine_similarity(s, t):.4f}")
+    print(f"Cosine similarity(s, u): {lm.cosine_similarity(s, u):.4f}")
 
 
 if __name__ == "__main__":
