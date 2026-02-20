@@ -1,0 +1,5 @@
+User: 
+Generate a PyTorch module `MHA` that implements a Multi Head Attention block.
+
+Assistant:
+```python

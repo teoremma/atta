@@ -1,0 +1,6 @@
+User: 
+Generate a PyTorch module `MHA` that implements a Multi Head Attention block.
+Use `jaxtyping` to implement in a typed manner.
+
+Assistant:
+```python

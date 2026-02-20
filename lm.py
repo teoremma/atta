@@ -5,8 +5,6 @@ import torch
 from torch import Tensor
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from find_tokens import _display_token
-
 
 class LM:
     """Small wrapper around AutoModelForCausalLM with hidden-state helpers."""

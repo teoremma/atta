@@ -7,6 +7,8 @@ import sys
 from typing import List, Tuple
 
 import torch
+import torch.nn.functional as F
+from transformers import AutoModel, AutoTokenizer
 
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.append(str(REPO_ROOT))
@@ -37,6 +39,49 @@ def compute_embeddings(lm: LM, codes: List[str]) -> torch.Tensor:
         if i % 100 == 0:
             print(f"Embedded {i}/{len(codes)}")
     return torch.stack(embeddings, dim=0)
+
+
+def last_token_pool(last_hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+    if left_padding:
+        return last_hidden_states[:, -1]
+    sequence_lengths = attention_mask.sum(dim=1) - 1
+    batch_size = last_hidden_states.shape[0]
+    return last_hidden_states[
+        torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths
+    ]
+
+
+@torch.no_grad()
+def compute_embeddings_qwen3(
+    model_id: str,
+    codes: List[str],
+    batch_size: int,
+    max_length: int,
+) -> torch.Tensor:
+    tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
+    model = AutoModel.from_pretrained(model_id, device_map="auto")
+    model.eval()
+    print(f"Loaded embedding model {model_id} on device {next(model.parameters()).device}")
+
+    embeddings: List[torch.Tensor] = []
+    for start in range(0, len(codes), batch_size):
+        end = min(start + batch_size, len(codes))
+        batch = tokenizer(
+            codes[start:end],
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt",
+        )
+        batch = {k: v.to(model.device) for k, v in batch.items()}
+        outputs = model(**batch)
+        pooled = last_token_pool(outputs.last_hidden_state, batch["attention_mask"])
+        pooled = F.normalize(pooled, p=2, dim=1)
+        embeddings.append(pooled.detach().float().cpu())
+        print(f"Embedded {end}/{len(codes)}")
+
+    return torch.cat(embeddings, dim=0)
 
 
 @torch.no_grad()
@@ -92,16 +137,35 @@ def main() -> int:
         help="HuggingFace model id.",
     )
     parser.add_argument(
+        "--use-qwen-embedding",
+        action="store_true",
+        help="Use Qwen/Qwen3-Embedding-0.6B embeddings instead of hidden-state embeddings.",
+    )
+    parser.add_argument(
+        "--embedding-model-id",
+        default="Qwen/Qwen3-Embedding-0.6B",
+        help="Embedding model id (used with --use-qwen-embedding).",
+    )
+    parser.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=16,
+        help="Batch size for embedding model inference.",
+    )
+    parser.add_argument(
+        "--embedding-max-length",
+        type=int,
+        default=8192,
+        help="Max token length for embedding model inputs.",
+    )
+    parser.add_argument(
         "--test-path",
         default=str(REPO_ROOT / "Clone-detection-POJ-104/dataset/test.jsonl"),
         help="Path to test.jsonl.",
     )
     parser.add_argument(
         "--out-path",
-        default=str(
-            REPO_ROOT
-            / "Clone-detection-POJ-104/dataset/preds/hs_mid/predictions.jsonl"
-        ),
+        default=None,
         help="Output predictions.jsonl path.",
     )
     parser.add_argument("--k", type=int, default=10, help="Number of neighbors.")
@@ -118,8 +182,23 @@ def main() -> int:
     if len(indices) != 12000:
         print(f"Warning: expected 12000 lines, got {len(indices)}")
 
-    lm = LM(args.model_id)
-    embeddings = compute_embeddings(lm, codes)
+    if args.out_path is None:
+        default_dir = "qwen3_embedding" if args.use_qwen_embedding else "hs_mid"
+        args.out_path = str(
+            REPO_ROOT
+            / f"Clone-detection-POJ-104/dataset/preds/{default_dir}/predictions.jsonl"
+        )
+
+    if args.use_qwen_embedding:
+        embeddings = compute_embeddings_qwen3(
+            args.embedding_model_id,
+            codes,
+            args.embedding_batch_size,
+            args.embedding_max_length,
+        )
+    else:
+        lm = LM(args.model_id)
+        embeddings = compute_embeddings(lm, codes)
     knn_indices = knn_by_angular_distance(embeddings, args.k, args.knn_batch_size)
     write_predictions(Path(args.out_path), indices, knn_indices, indices)
 

@@ -1,0 +1,6 @@
+User:
+Generate a pair of function to encrypt and decrypt using a public key algorithm.
+Make sure to correctly use type hints where possible.
+
+Assistant:
+```python
