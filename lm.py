@@ -166,8 +166,68 @@ class LM:
         )
         return cos_sim.item()
 
+    @torch.no_grad()
+    def _get_scores(self, p_tokens: Tensor, s_tokens: Tensor) -> Tensor:
+        """
+        Return the tensor of scores that the model + p_tokens gives to s_tokens.
+        p_tokens and s_tokens are expected to be input_ids of shape (1, seq_len).
 
-def _main() -> None:
+        The shape of this tensor should be (s_len, vocab_size).
+        """
+        ps_tokens = torch.cat([p_tokens, s_tokens], dim=1)
+
+        device = next(self.model.parameters()).device
+        ps_tokens = ps_tokens.to(device)
+
+        outputs = self.model(ps_tokens, use_cache=False)
+        # The scores for the i-th token of s_tokens are in the logits at
+        # the (len(p_tokens) + i - 1)-th position.
+        s_scores = outputs.logits[0, p_tokens.shape[1] - 1 : -1, :]
+        return s_scores
+
+    def _get_logprobs(self, scores: Tensor) -> Tensor:
+        """
+        Normalize scores to logprobs.
+
+        Args:
+            scores: Tensor of shape (s_len, vocab_size).
+
+        Returns:
+            Tensor of shape (s_len, vocab_size).
+        """
+        return torch.nn.functional.log_softmax(scores, dim=-1)
+
+    @torch.no_grad()
+    def _get_total_logprob(self, p_tokens: Tensor, s_tokens: Tensor) -> float:
+        """
+        Compute the total logprob of the full string.
+        """
+        scores = self._get_scores(p_tokens, s_tokens)
+        logprobs = self._get_logprobs(scores)
+        
+        # We need to get the log probability of each *actual* token in s_tokens.
+        # The logprobs tensor has shape (s_len, vocab_size).
+        # The s_tokens tensor has shape (1, s_len).
+        # We want to select the logprob of the actual next token.
+        s_tokens_flat = s_tokens.flatten()
+        
+        # The logprobs for the token at s_tokens[0, i] is at logprobs[i, s_tokens[0, i]]
+        # But we need to select the logprob for the *next* token, so we use s_tokens[0, 1:]
+        # and we take the logprobs from index 0 to -1
+        
+        # No, that's not right. The scores are already aligned with the s_tokens.
+        # s_scores = outputs.logits[0, p_tokens.shape[1] - 1 : -1, :]
+        # This means that s_scores[i] corresponds to the prediction for the token s_tokens[0, i].
+        
+        total_logprob = 0.0
+        for i in range(s_tokens.shape[1]):
+            token_id = s_tokens_flat[i]
+            total_logprob += logprobs[i, token_id].item()
+            
+        return total_logprob
+
+
+def _original_main() -> None:
     model_id = "Qwen/Qwen2.5-Coder-0.5B"
     # model_id = "Qwen/Qwen2.5-Coder-7B"
     lm = LM(model_id)
@@ -202,6 +262,27 @@ def _main() -> None:
     print(f"Cosine similarity(s, t): {lm.cosine_similarity(s, t):.4f}")
     print(f"Cosine similarity(s, u): {lm.cosine_similarity(s, u):.4f}")
 
+
+def _main() -> None:
+    model_id = "Qwen/Qwen2.5-Coder-0.5B"
+    # model_id = "Qwen/Qwen2.5-Coder-7B"
+    lm = LM(model_id)
+    print(f"\n--- Testing Logprob Functions ---")
+
+    prompt_add = "def add(a, b):\n    "
+    # prompt_sub = "def subtract(a, b):\n    "
+    prompt_sub = "def subtract(a, b):\n    "
+
+    query_add = "return a + b\n"
+    query_sub = "return a - b\n"
+
+    for p in [prompt_add, prompt_sub]:
+        print(f"\nPrompt:\n{p.strip()}")
+        for q in [query_add, query_sub]:
+            p_tokens = lm.tokenize(p)
+            q_tokens = lm.tokenize(q)
+            total_logprob = lm._get_total_logprob(p_tokens, q_tokens)
+            print(f"Total logprob of '{q.strip()}' given prompt '{p.strip()}': {total_logprob:.4f}")
 
 if __name__ == "__main__":
     _main()
