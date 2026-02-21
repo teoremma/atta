@@ -198,6 +198,23 @@ class LM:
         return torch.nn.functional.log_softmax(scores, dim=-1)
 
     @torch.no_grad()
+    def _get_token_logprobs(self, p_tokens: Tensor, s_tokens: Tensor) -> list[float]:
+        """
+        Return per-token logprobs for s_tokens given p_tokens.
+
+        Args:
+            p_tokens: Tensor of shape (1, p_len).
+            s_tokens: Tensor of shape (1, s_len).
+
+        Returns:
+            List of length s_len with logprob for each token in s_tokens.
+        """
+        scores = self._get_scores(p_tokens, s_tokens)
+        logprobs = self._get_logprobs(scores)
+        s_tokens_flat = s_tokens.flatten()
+        return [logprobs[i, token_id].item() for i, token_id in enumerate(s_tokens_flat)]
+
+    @torch.no_grad()
     def _get_total_logprob(self, p_tokens: Tensor, s_tokens: Tensor) -> float:
         """
         Compute the total logprob of the full string.
@@ -276,13 +293,56 @@ def _main() -> None:
     query_add = "return a + b\n"
     query_sub = "return a - b\n"
 
-    for p in [prompt_add, prompt_sub]:
-        print(f"\nPrompt:\n{p.strip()}")
-        for q in [query_add, query_sub]:
+    prompts = [prompt_add, prompt_sub]
+    queries = [query_add, query_sub]
+
+    for q in queries:
+        print(f"\nQuery:\n{q.strip()}")
+
+        # Shared tokenization for display
+        q_tokens = lm.tokenize(q)
+        q_token_ids = q_tokens[0].tolist()
+        q_tokens_str = lm.tokenizer.convert_ids_to_tokens(q_token_ids)
+        q_tokens_str = [
+            lm.tokenizer.convert_tokens_to_string([token]) for token in q_tokens_str
+        ]
+
+        per_prompt_logprobs: list[list[float]] = []
+        per_prompt_totals: list[float] = []
+
+        for p in prompts:
             p_tokens = lm.tokenize(p)
-            q_tokens = lm.tokenize(q)
+            q_token_logprobs = lm._get_token_logprobs(p_tokens, q_tokens)
+            per_prompt_logprobs.append(q_token_logprobs)
+
             total_logprob = lm._get_total_logprob(p_tokens, q_tokens)
-            print(f"Total logprob of '{q.strip()}' given prompt '{p.strip()}': {total_logprob:.4f}")
+            per_prompt_totals.append(total_logprob)
+
+        if len(prompts) >= 2:
+            print(f"\nPrompt 1:\n{prompts[0].strip()}")
+            print(f"Prompt 2:\n{prompts[1].strip()}")
+            print("\nStep | Token | Token ID | P1 Logprob | P2 Logprob | Δ Logprob")
+            print("-----|-------|----------|------------|------------|----------")
+            for i, (token_str, token_id, lp1, lp2) in enumerate(
+                zip(
+                    q_tokens_str,
+                    q_token_ids,
+                    per_prompt_logprobs[0],
+                    per_prompt_logprobs[1],
+                ),
+                start=1,
+            ):
+                print(
+                    f"{i:>4} | {token_str!r} | {token_id:>8} | "
+                    f"{lp1:>10.4f} | {lp2:>10.4f} | {(lp2 - lp1):>8.4f}"
+                )
+
+            print("-----|-------|----------|------------|------------|----------")
+            print(
+                f"{'TOTAL':>4} | {'':<5} | {'':<8} | {per_prompt_totals[0]:>10.4f} | "
+                f"{per_prompt_totals[1]:>10.4f} | "
+                f"{(per_prompt_totals[1] - per_prompt_totals[0]):>8.4f}"
+            )
 
 if __name__ == "__main__":
     _main()
