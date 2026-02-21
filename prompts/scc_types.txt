@@ -1,0 +1,7 @@
+User:
+Implement an algorithm for Strongly Connected Components.
+Make sure to use type annotations whenever possible.
+
+Assistant:
+```python
+

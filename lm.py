@@ -3,17 +3,21 @@ from __future__ import annotations
 import numpy as np
 import torch
 from torch import Tensor
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 
 
 class LM:
     """Small wrapper around AutoModelForCausalLM with hidden-state helpers."""
 
     def __init__(self, model_id: str):
+        config = AutoConfig.from_pretrained(model_id)
+        self.dtype = config.dtype
+        print(self.dtype)
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
         self.model = AutoModelForCausalLM.from_pretrained(
             model_id,
             device_map="auto",
+            dtype=self.dtype,
         )
         self.model.eval()
         print(f"Loaded model {model_id} on device {next(self.model.parameters()).device}")
@@ -280,21 +284,8 @@ def _original_main() -> None:
     print(f"Cosine similarity(s, u): {lm.cosine_similarity(s, u):.4f}")
 
 
-def _main() -> None:
-    model_id = "Qwen/Qwen2.5-Coder-0.5B"
-    # model_id = "Qwen/Qwen2.5-Coder-7B"
-    lm = LM(model_id)
-    print(f"\n--- Testing Logprob Functions ---")
-
-    prompt_add = "def add(a, b):\n    "
-    # prompt_sub = "def subtract(a, b):\n    "
-    prompt_sub = "def subtract(a, b):\n    "
-
-    query_add = "return a + b\n"
-    query_sub = "return a - b\n"
-
-    prompts = [prompt_add, prompt_sub]
-    queries = [query_add, query_sub]
+def logprob_analysis(lm: LM, prompts: list[str], queries: list[str]) -> None:
+    assert len(prompts) == 2, "logprob_analysis expects exactly 2 prompts for now"
 
     for q in queries:
         print(f"\nQuery:\n{q.strip()}")
@@ -318,31 +309,46 @@ def _main() -> None:
             total_logprob = lm._get_total_logprob(p_tokens, q_tokens)
             per_prompt_totals.append(total_logprob)
 
-        if len(prompts) >= 2:
-            print(f"\nPrompt 1:\n{prompts[0].strip()}")
-            print(f"Prompt 2:\n{prompts[1].strip()}")
-            print("\nStep | Token | Token ID | P1 Logprob | P2 Logprob | Δ Logprob")
-            print("-----|-------|----------|------------|------------|----------")
-            for i, (token_str, token_id, lp1, lp2) in enumerate(
-                zip(
-                    q_tokens_str,
-                    q_token_ids,
-                    per_prompt_logprobs[0],
-                    per_prompt_logprobs[1],
-                ),
-                start=1,
-            ):
-                print(
-                    f"{i:>4} | {token_str!r} | {token_id:>8} | "
-                    f"{lp1:>10.4f} | {lp2:>10.4f} | {(lp2 - lp1):>8.4f}"
-                )
-
-            print("-----|-------|----------|------------|------------|----------")
+        print(f"\nPrompt 1:\n{prompts[0].strip()}")
+        print(f"Prompt 2:\n{prompts[1].strip()}")
+        print("\nStep | Token | Token ID | P1 Logprob | P2 Logprob | Δ Logprob")
+        print("-----|-------|----------|------------|------------|----------")
+        for i, (token_str, token_id, lp1, lp2) in enumerate(
+            zip(
+                q_tokens_str,
+                q_token_ids,
+                per_prompt_logprobs[0],
+                per_prompt_logprobs[1],
+            ),
+            start=1,
+        ):
             print(
-                f"{'TOTAL':>4} | {'':<5} | {'':<8} | {per_prompt_totals[0]:>10.4f} | "
-                f"{per_prompt_totals[1]:>10.4f} | "
-                f"{(per_prompt_totals[1] - per_prompt_totals[0]):>8.4f}"
+                f"{i:>4} | {token_str!r} | {token_id:>8} | "
+                f"{lp1:>10.4f} | {lp2:>10.4f} | {(lp2 - lp1):>8.4f}"
             )
+
+        print("-----|-------|----------|------------|------------|----------")
+        print(
+            f"{'TOTAL':>4} | {'':<5} | {'':<8} | {per_prompt_totals[0]:>10.4f} | "
+            f"{per_prompt_totals[1]:>10.4f} | "
+            f"{(per_prompt_totals[1] - per_prompt_totals[0]):>8.4f}"
+        )
+
+
+def _main() -> None:
+    # model_id = "Qwen/Qwen2.5-Coder-0.5B"
+    model_id = "Qwen/Qwen2.5-Coder-7B"
+    lm = LM(model_id)
+    print(f"\n--- Testing Logprob Functions ---")
+
+    prompt_add = "def add(a, b):\n    "
+    # prompt_sub = "def subtract(a, b):\n    "
+    prompt_sub = "def subtract(a, b):\n    "
+
+    query_add = "return a + b\n"
+    query_sub = "return a - b\n"
+
+    logprob_analysis(lm, [prompt_add, prompt_sub], [query_add, query_sub])
 
 if __name__ == "__main__":
     _main()

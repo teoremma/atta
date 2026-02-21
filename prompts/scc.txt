@@ -1,0 +1,6 @@
+User:
+Implement an algorithm for Strongly Connected Components.
+
+Assistant:
+```python
+
